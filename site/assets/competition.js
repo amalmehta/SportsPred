@@ -119,7 +119,7 @@
     const fmt = c.format === "finals" ? "two groups of four, top two reach the semi-finals · " : "";
     const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · ${fmt}${court}best of ${c.best_of} sets` : `${c.season} season`;
     const h = c.history;
-    const canChart = h && h.dates.length > 1 && h.series.length;
+    const canChart = h && h.series.length && (h.dates.length > 1 || (c.live || []).length > 1);
     page.innerHTML = `
       <p class="small"><a href="index.html?sport=${sport}">← All ${tennis ? "tennis" : "soccer"}</a></p>
       <div class="card-head" style="justify-content:flex-start;margin-bottom:6px">${SP.tagFor(c)}<span class="status ${c.status}">${statusText}</span></div>
@@ -141,25 +141,35 @@
 
   function drawChart() {
     const h = c.history;
+    const live = (c.live || []).filter(e => e.p);
     const colors = Array.from({ length: 8 }, (_, i) => css(`--s${i + 1}`));
     const text2 = css("--text-2"), border = css("--border"), surface = css("--surface");
     const pct = SP.settings().odds === "percent";
+    // one x-axis for both: replay days (lines) and days the site published odds (dots)
+    const dates = [...new Set([...h.dates, ...live.map(e => e.date)])].sort();
+    const at = (ds, vs) => { const m = new Map(ds.map((d, i) => [d, vs[i]])); return dates.map(d => m.has(d) ? m.get(d) * 100 : null); };
+    const datasets = h.series.map((s, i) => ({
+      label: s.team, data: at(h.dates, s.p), borderColor: colors[i], backgroundColor: colors[i], spanGaps: true,
+      borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: surface, pointHoverBorderWidth: 2, tension: 0.25,
+    }));
+    if (live.length) {
+      h.series.forEach((s, i) => datasets.push({
+        label: `${s.team} (published)`, data: at(live.map(e => e.date), live.map(e => e.p[s.team] || 0)),
+        showLine: false, borderColor: colors[i], backgroundColor: surface, borderWidth: 2,
+        pointRadius: 4, pointHoverRadius: 6, pointStyle: "circle",
+      }));
+    }
     if (chart) chart.destroy();
     chart = new Chart(document.getElementById("chart"), {
       type: "line",
-      data: {
-        labels: h.dates.map(d => SP.date(d + "T12:00Z")),
-        datasets: h.series.map((s, i) => ({
-          label: s.team, data: s.p.map(v => v * 100), borderColor: colors[i], backgroundColor: colors[i],
-          borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: surface, pointHoverBorderWidth: 2, tension: 0.25,
-        })),
-      },
+      data: { labels: dates.map(d => SP.date(d + "T12:00Z")), datasets },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { display: false },
           tooltip: {
+            filter: item => item.parsed.y != null,
             itemSort: (a, b) => b.parsed.y - a.parsed.y,
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${SP.prob(ctx.parsed.y / 100)}` },
           },
@@ -172,7 +182,9 @@
       },
     });
     document.getElementById("legend").innerHTML = h.series.map((s, i) =>
-      `<span><i style="background:${colors[i]}"></i>${SP.esc(s.team)} · ${SP.prob(s.p[s.p.length - 1])}</span>`).join("");
+      `<span><i style="background:${colors[i]}"></i>${SP.esc(s.team)} · ${SP.prob(s.p[s.p.length - 1])}</span>`).join("") +
+      `<span class="muted" style="flex-basis:100%">Lines: replay, using only what was known at the end of each day.${live.length
+        ? ` Dots: the odds this site published that day (${live.length} day${live.length > 1 ? "s" : ""} so far, since ${SP.esc(SP.date(live[0].date + "T12:00Z"))}).` : ""}</span>`;
   }
 
   SP.onChange(render);

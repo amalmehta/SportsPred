@@ -238,5 +238,29 @@ class FinalsTests(unittest.TestCase):
         self.assertEqual(semi["status"], "scheduled")
 
 
+class LiveLogTests(unittest.TestCase):
+    def test_merge_keeps_latest_per_day_and_current_season(self):
+        from pipeline.live_log import merge
+        entries = [
+            {"date": "2026-10-12", "t": "2026-10-12T06:00Z", "season": "2026–27", "p": {"A": 0.5}},
+            {"date": "2026-10-12", "t": "2026-10-12T21:00Z", "season": "2026–27", "p": {"A": 0.6}},
+            {"date": "2026-10-11", "t": "2026-10-11T21:00Z", "season": "2026–27", "p": {"A": 0.4}},
+            {"date": "2026-05-01", "t": "2026-05-01T21:00Z", "season": "2025–26", "p": {"A": 0.9}},
+        ]
+        out = merge(entries, "2026–27")
+        self.assertEqual([e["date"] for e in out], ["2026-10-11", "2026-10-12"])
+        self.assertEqual(out[1]["p"]["A"], 0.6)
+
+    def test_headline_follows_the_competition(self):
+        from pipeline.live_log import headline
+        league = {"sport": "soccer", "format": "league", "table": [{"team": "A", "p_win": 0.7}, {"team": "B", "p_win": 0.0}]}
+        quals = {"sport": "soccer", "format": "qualifying",
+                 "table": [{"team": "A", "p_win": 0.2, "p_qualify": 0.9}]}
+        draw = {"sport": "tennis", "format": "knockout", "table": [{"player": "P", "p_win": 0.3}]}
+        self.assertEqual(headline(league), {"A": 0.7})
+        self.assertEqual(headline(quals), {"A": 0.9})
+        self.assertEqual(headline(draw), {"P": 0.3})
+
+
 if __name__ == "__main__":
     unittest.main()

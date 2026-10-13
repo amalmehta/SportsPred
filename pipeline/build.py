@@ -8,7 +8,7 @@ import os
 import time
 import traceback
 
-from . import soccer_build, tennis_build
+from . import live_log, soccer_build, tennis_build
 from .common import SITE_DATA_DIR, now_iso, read_json, today, write_json
 
 
@@ -31,9 +31,9 @@ def main(argv=None):
 
     steps = {
         "clubs": (soccer_build.build_clubs, soccer_build.write, "soccer_clubs",
-                  lambda c: c["sport"] == "soccer" and c["group"] != "international"),
+                  lambda c: c["sport"] == "soccer" and c["group"] in ("domestic", "european")),
         "international": (soccer_build.build_international, soccer_build.write, "soccer_international",
-                          lambda c: c["group"] == "international"),
+                          lambda c: c["group"] in ("international", "qualifying")),
         "tennis": (tennis_build.build, tennis_build.write, "tennis", lambda c: c["sport"] == "tennis"),
     }
     failed = []
@@ -48,7 +48,7 @@ def main(argv=None):
             traceback.print_exc()
             failed.append(name)
             continue
-        write(comps)
+        write(live_log.attach(comps, today_iso))
         kept = {k: v for k, v in kept.items() if not belongs(v)}
         kept.update({c["id"]: summary(c) for c in comps})
         model[model_key] = m

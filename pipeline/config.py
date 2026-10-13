@@ -58,6 +58,9 @@ WC_QUALIFYING = [
      "group": "qualifying", "stages": {"second": [0, 2, "Next round"], "": [1, 1, "Intercontinental playoff"]}},
 ]
 
+# The published site. Each run reads the earlier daily-odds log back from here (see live_log.py).
+SITE_URL = "https://amalmehta.github.io/SportsPred/"
+
 INTERNATIONAL_RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
 
 # ESPN display name -> name used in the international results archive.
