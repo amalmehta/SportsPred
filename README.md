@@ -16,7 +16,7 @@ flowchart LR
   D --> E[Website: title odds, odds over time, match picks]
 ```
 
-**Covers:** Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, international tournaments while they're on, plus ATP and WTA Grand Slams, 1000-level events and the season-ending ATP and WTA Finals.
+**Covers:** Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, international tournaments and World Cup qualifying groups while they're on, plus ATP and WTA Grand Slams, 1000-level events and the season-ending ATP and WTA Finals.
 
 - **Live site:** https://amalmehta.github.io/SportsPred/
 - [How to set it up, run it and use it](docs/INSTRUCTIONS.md)

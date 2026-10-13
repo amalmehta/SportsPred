@@ -10,7 +10,7 @@ from .common import SITE_DATA_DIR, day, now_iso, today, write_json
 from .soccer_data import fetch_groups, load_international_results, load_slug
 from .soccer_model import Elo, fit_goals_model, score_predictions
 from .soccer_sim import (Matchups, simulate_groups_ko, simulate_league,
-                         simulate_league_phase_ko)
+                         simulate_league_phase_ko, simulate_qualifying)
 
 GROUP_STAGES = ("league", "group")
 INTL_K = [  # (substring of tournament name, K multiplier)
@@ -142,6 +142,11 @@ def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None):
         teams = sorted({m["home_key"] for m in season_matches} | {m["away_key"] for m in season_matches})
         return simulate_league(teams, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
                                [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed)
+    if fmt == "qualifying":
+        direct, nxt, _ = cfg["_slots"]
+        return simulate_qualifying(groups, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
+                                   [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed,
+                                   direct, nxt)
     is_group = lambda m: any(g in m["stage"] for g in GROUP_STAGES) and "relegation" not in m["stage"]
     gs = [m for m in season_matches if is_group(m)]
     start = min((m["date"] for m in gs), default="")
@@ -159,6 +164,8 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
     hfa = elo.hfa
     seed = seed_for(cfg["slug"], today_iso[:10])
     now = simulate_comp(cfg, season_matches, elo.ratings, gm, hfa, config.SIMS_TODAY, seed, groups)
+    qualifying = cfg["format"] == "qualifying"
+    key = "p_qualify" if qualifying else "p_win"  # what the chart and the headline track
 
     # odds over time: replay the season with only what was known at the end of each match day
     series_days, series = [], []
@@ -168,9 +175,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         res = simulate_comp(cfg, as_of(season_matches, d), snaps[d], gm, hfa, config.SIMS_REPLAY,
                             seed_for(cfg["slug"], d), groups)
         series_days.append(d)
-        series.append(res["p_win"])
+        series.append(res[key])
     series_days.append(today_iso[:10])
-    series.append(now["p_win"])
+    series.append(now[key])
 
     fin = [m for m in season_matches if m["status"] == "final"]
     table = {}
@@ -179,11 +186,14 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
             continue
         for k, gf, ga in ((m["home_key"], m["hg"], m["ag"]), (m["away_key"], m["ag"], m["hg"])):
             row = table.setdefault(k, {"played": 0, "pts": 0, "gd": 0})
-            if cfg["format"] == "league" or any(g in m["stage"] for g in GROUP_STAGES):
+            if cfg["format"] in ("league", "qualifying") or any(g in m["stage"] for g in GROUP_STAGES):
                 row["played"] += 1
                 row["pts"] += 3 if gf > ga else (1 if gf == ga else 0)
                 row["gd"] += gf - ga
     teams = sorted(set(now["p_win"]) | set(table), key=lambda t: (-now["p_win"].get(t, 0), -now["proj_pts"].get(t, 0)))
+    if qualifying:  # group by group, likeliest qualifiers first
+        teams = [t for t in teams if t in now["p_win"]]
+        teams.sort(key=lambda t: ((group_of or {}).get(t) or "", -now["p_qualify"][t], -now["proj_pts"][t]))
     rows = []
     for t in teams:
         r = table.get(t, {"played": 0, "pts": 0, "gd": 0})
@@ -194,6 +204,8 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
             "p_win": round(now["p_win"].get(t, 0.0), 4),
             "group": (group_of or {}).get(t),
         })
+        if qualifying:
+            rows[-1].update({"p_qualify": round(now["p_qualify"][t], 4), "p_playoff": round(now["p_playoff"][t], 4)})
 
     mu = Matchups(elo.ratings, gm, hfa)
     upcoming = []
@@ -221,8 +233,13 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
                        "p": [round(x, 3) for x in p],
                        "called": max(range(3), key=lambda i: p[i]) == outcome(m)})
 
-    top = sorted({t for s in series for t in s}, key=lambda t: -max(s.get(t, 0) for s in series))[:8]
-    fav = rows[0] if rows else None
+    if qualifying:  # the races that moved most, not the certainties
+        spread = lambda t: max(s.get(t, 0) for s in series) - min(s.get(t, 0) for s in series)
+        top = sorted({t for s in series for t in s}, key=lambda t: -spread(t))[:8]
+        fav = max(rows, key=lambda r: (r["p_qualify"], r["p_win"])) if rows else None
+    else:
+        top = sorted({t for s in series for t in s}, key=lambda t: -max(s.get(t, 0) for s in series))[:8]
+        fav = rows[0] if rows else None
     finished_all = not todo
     return {
         "id": cfg["slug"], "sport": "soccer", "name": cfg["name"], "group": sport_group,
@@ -231,8 +248,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         "table": rows, "upcoming": upcoming, "recent": recent,
         "history": {"dates": series_days,
                     "series": [{"team": names.get(t, t), "p": [round(s.get(t, 0.0), 4) for s in series]} for t in top]},
-        "favourite": {"name": fav["team"], "p": fav["p_win"]} if fav else None,
+        "favourite": {"name": fav["team"], "p": fav[key]} if fav else None,
         "next_match": upcoming[0]["date"] if upcoming else None,
+        "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,
     }
 
 
@@ -288,14 +306,16 @@ def build_international(today_iso):
     last = max(r["date"] for r in archive)
     k_mult = lambda tour: next((k for s, k in INTL_K if s in tour), 1.5)
     rows = [{"id": "a%d" % i, "date": r["date"], "home": r["home"], "away": r["away"], "hg": r["hg"], "ag": r["ag"],
-             "neutral": r["neutral"], "k_mult": k_mult(r["tournament"])} for i, r in enumerate(archive)]
+             "neutral": r["neutral"], "k_mult": k_mult(r["tournament"])} for i, r in enumerate(archive)
+            if r["date"] <= today_iso[:10]]  # (only matters when replaying a past date)
 
     active = []
-    for cfg in config.INTERNATIONAL_COMPETITIONS:
+    for cfg in config.INTERNATIONAL_COMPETITIONS + config.WC_QUALIFYING:
         try:
-            ms = load_slug(cfg["slug"], t.year - 1, t.year + 1)
+            ms = load_slug(cfg["slug"], t.year - 2, t.year + 1)
         except RuntimeError:
             continue
+        ms = as_of(ms, (t - timedelta(days=1)).isoformat()) if os.environ.get("SPORTSPRED_TODAY") else ms
         for m in ms:
             m["home_key"], m["away_key"] = intl_key(m["home"]), intl_key(m["away"])
         soon = (t + timedelta(days=300)).isoformat()
@@ -343,6 +363,15 @@ def build_international(today_iso):
         keep = {t for v in groups.values() for t in v}
         group_of = {t: g for g, v in groups.items() for t in v}
         sm_kept = [m for m in sm if m["home_key"] in keep or m["away_key"] in keep]
+        if cfg["format"] == "qualifying":
+            # this stage only: matches between two teams of the same group, slots from the stage's rules
+            sm_kept = [m for m in sm if group_of.get(m["home_key"]) and group_of.get(m["home_key"]) == group_of.get(m["away_key"])]
+            if not sm_kept:
+                continue
+            stage = max(sm_kept, key=lambda m: m["date"])["stage"]  # the latest round is the current one
+            sm_kept = [m for m in sm_kept if m["stage"] == stage]
+            cfg = dict(cfg, _slots=next(v for k, v in sorted(cfg["stages"].items(), key=lambda kv: -len(kv[0]))
+                                        if k in stage))
         comps.append(comp_payload(cfg, cfg["group"], sm_kept, elo, gm, snaps, names, today_iso, groups, group_of))
 
     cut = (t - timedelta(days=365)).isoformat()

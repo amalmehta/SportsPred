@@ -31,7 +31,7 @@ const SP = (() => {
     "eng.1": [145, 45, "Premier League"], "esp.1": [122, 42, "La Liga"], "ita.1": [100, 48, "Serie A"],
     "ger.1": [168, 48, "Bundesliga"], "fra.1": [82, 55, "Ligue 1"],
     "uefa.champions": [192, 62, "UEFA club"], "uefa.europa": [206, 55, "UEFA club"],
-    "international": [232, 52, "International"],
+    "international": [232, 52, "International"], "qualifying": [212, 62, "WC Qualifying"],
     "atp-slam": [22, 78, "ATP · Grand Slam"], "atp-1000": [38, 82, "ATP · 1000"],
     "atp-finals": [50, 85, "ATP · Finals"],
     "wta-slam": [345, 62, "WTA · Grand Slam"], "wta-1000": [322, 52, "WTA · 1000"], "wta-finals": [298, 45, "WTA · Finals"],

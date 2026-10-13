@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 
 from pipeline.soccer_model import Elo, GoalsModel, fit_goals_model, gd_multiplier, score_predictions
-from pipeline.soccer_sim import Matchups, knockout_state, sim_table, simulate_league
+from pipeline.soccer_sim import Matchups, knockout_state, sim_table, simulate_league, simulate_qualifying
 from pipeline.tennis_model import (TennisElo, _standings, as_of, as_of_rr, best_of_five, fit_surface_weight, round_rank,
                                    rr_groups, simulate_draw, simulate_finals, surface_of, win_prob)
 
@@ -83,6 +83,17 @@ class SoccerSimTests(unittest.TestCase):
         two = (("A", "B", False), ("B", "A", False))
         self.assertAlmostEqual(mu.tie_prob("A", "B", two), 0.5, places=6)
         self.assertGreater(mu.tie_prob("A", "B", (("B", "A", False),), agg=3), 0.9)
+
+    def test_qualifying_places(self):
+        teams = ["A", "B", "C", "D"]
+        fixtures = [(h, a, False) for h in teams for a in teams if h != a]
+        res = simulate_qualifying({"Group 1": teams}, [], fixtures, self.mu, 3000, 5, direct=1, nxt=2)
+        for key, total in (("p_win", 1.0), ("p_qualify", 1.0), ("p_playoff", 2.0)):
+            self.assertAlmostEqual(sum(res[key].values()), total, places=6)
+        self.assertEqual(res["p_win"], res["p_qualify"])  # one direct place = topping the group
+        self.assertGreater(res["p_qualify"]["A"], res["p_qualify"]["D"])
+        done = simulate_qualifying({"G": ["A", "B"]}, [("D", "A", 3, 0)], [], self.mu, 100, 1, direct=1, nxt=1)
+        self.assertEqual(sum(done["p_qualify"].values()), 1.0)  # results from outside the group are ignored
 
     def test_knockout_state_uses_aggregate(self):
         def m(h, a, hg=None, ag=None, status="final"):

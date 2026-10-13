@@ -91,7 +91,7 @@ def load_slug(slug, first_year, last_year):
 
 
 def fetch_groups(slug):
-    """Group tables from ESPN standings: {group name: [team ids]}."""
+    """Group tables from ESPN standings (the latest stage): {group name: [team ids]}."""
     try:
         data = fetch("%s/v2/sports/soccer/%s/standings" % (ESPN, slug))
     except RuntimeError:
@@ -99,7 +99,9 @@ def fetch_groups(slug):
     groups = {}
     for child in data.get("children", []):
         entries = (child.get("standings") or {}).get("entries", [])
-        groups[child.get("name", "")] = [e["team"]["id"] for e in entries]
+        name = child.get("name", "")
+        name = name.rsplit(" - ", 1)[-1] if " - " in name else name  # "2026 FIFA ... Qualifying - Group A"
+        groups[name] = [e["team"]["id"] for e in entries]
     return groups
 
 

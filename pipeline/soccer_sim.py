@@ -323,3 +323,23 @@ def simulate_groups_ko(groups, results, fixtures, ko_matches, mu, n, seed, advan
         else:
             champs.append(run_bracket(bracket, mu, two_leg_min, rng_py, fixed_pairs=True))
     return {"p_win": champion_counts(champs, all_teams), "proj_pts": proj}
+
+
+def simulate_qualifying(groups, results, fixtures, mu, n, seed, direct=1, nxt=1):
+    """Qualifying groups: each table is simulated; finishing positions become places.
+
+    Returns p_win (top the group), p_qualify (top `direct`), p_playoff (the `nxt` places after that).
+    """
+    rng = np.random.default_rng(seed)
+    out = {"p_win": {}, "p_qualify": {}, "p_playoff": {}, "proj_pts": {}}
+    for name, teams in groups.items():
+        g_results = [r for r in results if r[0] in teams and r[1] in teams]
+        g_fix = [f for f in fixtures if f[0] in teams and f[1] in teams]
+        order, pts = sim_table(teams, g_results, g_fix, mu, n, rng)
+        pos = np.argsort(order, axis=1)  # pos[s, i] = finishing position of team i in sim s (0 = top)
+        for i, t in enumerate(teams):
+            out["p_win"][t] = float((pos[:, i] == 0).mean())
+            out["p_qualify"][t] = float((pos[:, i] < direct).mean())
+            out["p_playoff"][t] = float(((pos[:, i] >= direct) & (pos[:, i] < direct + nxt)).mean())
+            out["proj_pts"][t] = float(pts[:, i].mean())
+    return out

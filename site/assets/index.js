@@ -11,7 +11,7 @@
   SP.footer(index.updated);
 
   const ORDER = { live: 0, upcoming: 1, finished: 2 };
-  const GROUP_ORDER = ["european", "domestic", "international", "atp-slam", "wta-slam", "atp-finals", "wta-finals", "atp-1000", "wta-1000"];
+  const GROUP_ORDER = ["european", "domestic", "international", "qualifying", "atp-slam", "wta-slam", "atp-finals", "wta-finals", "atp-1000", "wta-1000"];
 
   function card(c) {
     const href = `competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}`;
@@ -23,7 +23,7 @@
       body = `<div class="fav"><span class="who">🏆 ${SP.esc(c.champion || c.favourite.name)}</span><span class="muted small">Champion</span></div>`;
     } else if (c.favourite) {
       body = `<div class="fav"><span class="who">${SP.esc(c.favourite.name)}</span><span class="pct">${SP.prob(c.favourite.p)}</span></div>
-        <div class="meter" title="Chance to win"><i style="width:${Math.max(2, c.favourite.p * 100)}%"></i></div>${c.projected ? `<div class="muted small">Projected field · draw not out yet</div>` : ""}`;
+        ${c.format === "qualifying" ? `<div class="muted small" style="margin-top:-8px">Likeliest to qualify</div>` : ""}<div class="meter" title="Chance to win"><i style="width:${Math.max(2, c.favourite.p * 100)}%"></i></div>${c.projected ? `<div class="muted small">Projected field · draw not out yet</div>` : ""}`;
     } else {
       body = `<div class="muted small">Odds appear once the draw is out.</div>`;
     }

@@ -9,7 +9,7 @@ SportsPred/
 │   └── update.yml             Every 3 hours: test, build, publish to GitHub Pages
 ├── pipeline/                  Python: data → ratings → simulations → site/data
 │   ├── build.py               Entry point (python3 -m pipeline.build); writes index.json and model.json
-│   ├── config.py              Competitions covered, tennis surfaces by name, history range, simulation counts, name aliases
+│   ├── config.py              Competitions covered (incl. World Cup qualifying), tennis surfaces by name, history range, simulation counts, name aliases
 │   ├── common.py              HTTP fetching, JSON files, dates
 │   ├── soccer_data.py         ESPN soccer results and fixtures, group tables, international archive
 │   ├── soccer_model.py        Soccer Elo, goals model, accuracy scoring

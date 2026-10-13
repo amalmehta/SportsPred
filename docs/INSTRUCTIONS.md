@@ -55,6 +55,7 @@ Edit `pipeline/config.py`:
 
 - `SOCCER_COMPETITIONS`: club competitions (any ESPN soccer league slug, e.g. `ned.1`).
 - `INTERNATIONAL_COMPETITIONS`: international tournaments, shown only while they have fixtures.
+- `WC_QUALIFYING`: World Cup qualifying per confederation, with the qualifying and playoff places per group for each stage. Update the places once FIFA confirms the 2030 allocation.
 - `TENNIS_TOURS`: name keywords for the tennis events that get predictions.
 - `TENNIS_SURFACES`: name keywords for clay and grass events (everything else counts as hard court).
 - `TENNIS_FINALS` / `TENNIS_EXCLUDE`: which events use the round-robin finale format, and names to skip (the Next Gen ATP Finals).

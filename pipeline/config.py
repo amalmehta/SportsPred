@@ -39,6 +39,25 @@ INTERNATIONAL_COMPETITIONS = [
      "advance_top": 2, "two_leg_min": 999},
 ]
 
+# World Cup qualifying, per confederation. Shown only while qualifiers are scheduled (2030 qualifying
+# hadn't been scheduled as of Oct 2026). Each group's table is simulated and positions turn into places:
+#   stages: {stage keyword: [direct places per group, next-step places per group, what the next step is]}
+#   Places follow the 2026 cycle; update them when FIFA confirms the 2030 allocation.
+#   "Best runners-up" rules (CAF, CONCACAF) are approximated as every runner-up.
+WC_QUALIFYING = [
+    {"slug": "fifa.worldq.uefa", "name": "World Cup Qualifying · Europe", "format": "qualifying", "group": "qualifying",
+     "stages": {"": [1, 1, "Playoff"]}},
+    {"slug": "fifa.worldq.conmebol", "name": "World Cup Qualifying · South America", "format": "qualifying",
+     "group": "qualifying", "stages": {"": [6, 1, "Intercontinental playoff"]}},
+    {"slug": "fifa.worldq.caf", "name": "World Cup Qualifying · Africa", "format": "qualifying", "group": "qualifying",
+     "stages": {"": [1, 1, "CAF playoff"]}},
+    {"slug": "fifa.worldq.afc", "name": "World Cup Qualifying · Asia", "format": "qualifying", "group": "qualifying",
+     "stages": {"second": [0, 2, "Next round"], "third": [2, 2, "Next round"], "fourth": [1, 1, "Next round"],
+                "": [2, 2, "Next round"]}},
+    {"slug": "fifa.worldq.concacaf", "name": "World Cup Qualifying · North & Central America", "format": "qualifying",
+     "group": "qualifying", "stages": {"second": [0, 2, "Next round"], "": [1, 1, "Intercontinental playoff"]}},
+]
+
 INTERNATIONAL_RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
 
 # ESPN display name -> name used in the international results archive.

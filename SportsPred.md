@@ -75,13 +75,13 @@ Decided without asking:
 - Jeff Sackmann's tennis CSVs are gone (404), so tennis history comes from ESPN too, from 2024.
 - Ratings: Elo. Soccer match chances from a Poisson goals model; 10,000 Monte Carlo runs.
 - Six extra leagues (POR, NED, SCO, BEL, TUR, Conference League) feed ratings only.
-- Not predicted: Next Gen ATP Finals, Europa Conference League, World Cup qualifiers.
+- Not predicted: Next Gen ATP Finals, Europa Conference League, Oceania qualifying, intercontinental playoffs.
+- World Cup qualifying (user chose to build now): dormant until 2030 qualifiers are scheduled; shows qualify / playoff / top-group chances; places follow the 2026 cycle until FIFA confirms 2030's.
 - ATP/WTA Finals before the draw: field projected from the current top 8 in the rankings (user chose this; ESPN has no Race standings).
 - No file input in this app, so no Upload button.
 - Repo is public (needed for GitHub Pages on a free plan).
 
 Proposals (not built):
-- Predictions for World Cup qualifying groups.
 - Store each day's live odds alongside the replay to compare against them later.
 - Mac app wrapper, if wanted later.
 
@@ -109,3 +109,4 @@ CHANGELOG:
 - 2026-10-13 — built SportsPred website: soccer + tennis predictions, odds over time, GitHub Pages deploy every 3 hours
 - 2026-10-13 — added surface-specific tennis ratings (overall + hard/clay/grass Elo, blend fitted on results)
 - 2026-10-13 — added ATP and WTA Finals predictions (round robin + semis; projected field until the draw)
+- 2026-10-13 — added World Cup qualifying group predictions (qualify / playoff / top group; switches on when 2030 qualifiers are scheduled)
