@@ -33,7 +33,8 @@ const SP = (() => {
     "uefa.champions": [192, 62, "UEFA club"], "uefa.europa": [206, 55, "UEFA club"],
     "international": [232, 52, "International"],
     "atp-slam": [22, 78, "ATP · Grand Slam"], "atp-1000": [38, 82, "ATP · 1000"],
-    "wta-slam": [345, 62, "WTA · Grand Slam"], "wta-1000": [322, 52, "WTA · 1000"],
+    "atp-finals": [50, 85, "ATP · Finals"],
+    "wta-slam": [345, 62, "WTA · Grand Slam"], "wta-1000": [322, 52, "WTA · 1000"], "wta-finals": [298, 45, "WTA · Finals"],
   };
   function tagFor(c) {
     const t = TAGS[c.id] || TAGS[c.group] || [0, 0, c.group || ""];
@@ -157,7 +158,7 @@ const SP = (() => {
   function footer(updated) {
     const f = document.getElementById("foot");
     if (!f) return;
-    f.innerHTML = `<div class="wrap">Predictions refresh daily from public results${updated ? " · last update " + esc(when(updated)) : ""} ·
+    f.innerHTML = `<div class="wrap">Predictions refresh every 3 hours from public results${updated ? " · last update " + esc(when(updated)) : ""} ·
       <a href="how.html">How it works</a> · <a href="${REPO}">Source</a>. For fun and learning, not betting advice.</div>`;
   }
 

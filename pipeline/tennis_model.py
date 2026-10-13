@@ -265,3 +265,158 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None):
         if champ is not None and not isinstance(champ, tuple):
             wins[champ] += 1
     return {p: c / float(n) for p, c in wins.items()}
+
+
+# ---------------------------------------------------------------- season finales (round robin)
+
+GROUP_STAGE = "group stage"
+
+
+def is_group_match(m):
+    return (m.get("round") or "").lower().startswith("group")
+
+
+def rr_groups(matches):
+    """Groups from who has played (or is scheduled to play) whom, in order of first match.
+
+    ESPN doesn't name the groups, so they're the connected parts of the group-stage match graph.
+    Early on (one match per player listed) there can be more than two parts.
+    """
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    order = []
+    for m in sorted((m for m in matches if is_group_match(m)), key=lambda m: m["date"] or ""):
+        for p in (m["a"], m["b"]):
+            if p and p not in order:
+                order.append(p)
+        if m["a"] and m["b"]:
+            parent[find(m["a"])] = find(m["b"])
+    comps = {}
+    for p in order:
+        comps.setdefault(find(p), []).append(p)
+    return list(comps.values())
+
+
+def as_of_rr(event, d):
+    """A finale as it stood at the end of day d."""
+    ms = [dict(m) for m in event["matches"] if not (m["round"] or "").lower().startswith("qual")]
+    done = lambda m: m["status"] in ("final", "retired", "walkover") and day(m["date"]) <= d
+    groups_done = all(done(m) for m in ms if is_group_match(m))
+    semis_done = all(done(m) for m in ms if (m["round"] or "").lower().startswith("semi"))
+    for m in ms:
+        if done(m):
+            continue
+        m["status"], m["w"] = "scheduled", None
+        r = (m["round"] or "").lower()
+        if (r.startswith("semi") and not groups_done) or (r == "final" and not semis_done):
+            m["a"] = m["b"] = None
+            m["an"] = m["bn"] = "TBD"
+    return ms
+
+
+def _standings(players, results, rng):
+    """Order a group: most wins first; two players level on wins split by head-to-head; else random."""
+    wins = {p: 0 for p in players}
+    h2h = {}
+    for w, l in results:
+        if w in wins:
+            wins[w] += 1
+        h2h[(w, l)] = True
+    order = sorted(players, key=lambda p: (-wins[p], rng.random()))
+    for i in range(len(order) - 1):
+        a, b = order[i], order[i + 1]
+        level = [p for p in order if wins[p] == wins[a]]
+        if wins[a] == wins[b] and len(level) == 2 and h2h.get((b, a)):
+            order[i], order[i + 1] = b, a
+    return order
+
+
+def simulate_finals(matches, ratings, n, seed, projected=None):
+    """Monte Carlo for a season finale. Returns ({player: P(title)}, {player: P(reach semis)}).
+
+    projected: ranked list of 8 player ids to use before ESPN publishes the groups. The draw then
+    follows the tours' rules: seeds 1 and 2 apart, and 3/4, 5/6 and 7/8 each split between the groups.
+    """
+    rng = random.Random(seed)
+    known = list(ratings.values())
+    default = sorted(known)[len(known) // 5] if known else 1500.0
+    cache = {}
+
+    def beats(a, b):
+        if (a, b) not in cache:
+            cache[(a, b)] = win_prob(ratings.get(a, default), ratings.get(b, default))
+        return rng.random() < cache[(a, b)]
+
+    group_ms = [m for m in matches if is_group_match(m) and m["a"] and m["b"]]
+    semis = [m for m in matches if (m["round"] or "").lower().startswith("semi")]
+    final = [m for m in matches if (m["round"] or "").lower() == "final"]
+    comps = rr_groups(matches)
+    use_projection = projected is not None and not group_ms
+
+    def finished(m):
+        return m["status"] in ("final", "retired", "walkover") and m["w"] is not None and m["a"] and m["b"]
+
+    def winner(m, a=None, b=None):
+        a, b = a or m["a"], b or m["b"]
+        if m is not None and finished(m):
+            return m["a"] if m["w"] == 0 else m["b"]
+        return a if beats(a, b) else b
+
+    titles, semis_reached = defaultdict(int), defaultdict(int)
+    for _ in range(n):
+        if use_projection:
+            ga, gb = [projected[0]], [projected[1]]
+            for i in (2, 4, 6):
+                pair = projected[i:i + 2]
+                rng.shuffle(pair)
+                ga.append(pair[0])
+                if len(pair) > 1:
+                    gb.append(pair[1])
+            groups = [ga, gb]
+        elif len(comps) > 2:  # groups not fully known yet: join the pieces at random into two groups
+            pieces = comps[:]
+            rng.shuffle(pieces)
+            groups = [[], []]
+            for piece in pieces:
+                groups[0 if len(groups[0]) < 4 else 1].extend(piece)
+        else:
+            groups = [g[:] for g in comps]
+        top = []
+        for g in groups:
+            listed = [m for m in group_ms if m["a"] in g and m["b"] in g]
+            pairs = {frozenset((m["a"], m["b"])) for m in listed}
+            results = []
+            for m in listed:
+                w = winner(m)
+                results.append((w, m["b"] if w == m["a"] else m["a"]))
+            if len(g) == 4:  # every pair meets once; simulate pairings ESPN hasn't listed yet
+                for i in range(4):
+                    for j in range(i + 1, 4):
+                        if frozenset((g[i], g[j])) not in pairs:
+                            w = g[i] if beats(g[i], g[j]) else g[j]
+                            results.append((w, g[j] if w == g[i] else g[i]))
+            top.append(_standings(g, results, rng)[:2])
+        if len(top) < 2 or any(len(t) < 2 for t in top):
+            continue
+        real_semis = [m for m in semis if m["a"] and m["b"]]
+        if len(real_semis) == 2:
+            pairings = [(m, m["a"], m["b"]) for m in real_semis]
+        else:  # group winner meets the other group's runner-up
+            pairings = [(None, top[0][0], top[1][1]), (None, top[1][0], top[0][1])]
+        finalists = []
+        for m, a, b in pairings:
+            semis_reached[a] += 1
+            semis_reached[b] += 1
+            finalists.append(winner(m, a, b) if m is not None else (a if beats(a, b) else b))
+        f = final[0] if final and final[0]["a"] and final[0]["b"] else None
+        champ = winner(f) if f is not None else (finalists[0] if beats(finalists[0], finalists[1]) else finalists[1])
+        titles[champ] += 1
+    return ({p: c / float(n) for p, c in titles.items()},
+            {p: c / float(n) for p, c in semis_reached.items()})

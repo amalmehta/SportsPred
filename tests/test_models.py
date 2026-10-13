@@ -5,8 +5,8 @@ import numpy as np
 
 from pipeline.soccer_model import Elo, GoalsModel, fit_goals_model, gd_multiplier, score_predictions
 from pipeline.soccer_sim import Matchups, knockout_state, sim_table, simulate_league
-from pipeline.tennis_model import (TennisElo, as_of, best_of_five, fit_surface_weight, round_rank, simulate_draw,
-                                   surface_of, win_prob)
+from pipeline.tennis_model import (TennisElo, _standings, as_of, as_of_rr, best_of_five, fit_surface_weight, round_rank,
+                                   rr_groups, simulate_draw, simulate_finals, surface_of, win_prob)
 
 
 class SoccerModelTests(unittest.TestCase):
@@ -167,6 +167,64 @@ class SurfaceTests(unittest.TestCase):
             m["date"] = "2025-%02d-%02dT10:00Z" % (1 + k // 28, 1 + k % 28)
         elo.run(ms)
         self.assertGreaterEqual(fit_surface_weight(elo, ms[20:]), 0.8)
+
+
+class FinalsTests(unittest.TestCase):
+    """Season finales: two round-robin groups of four, top two reach the semis."""
+
+    def m(self, i, rnd, a, b, w=None, d="2025-11-09"):
+        return {"id": str(i), "round": rnd, "date": d + "T13:00Z", "status": "final" if w is not None else "scheduled",
+                "a": a, "an": a or "TBD", "b": b, "bn": b or "TBD", "w": w}
+
+    def event(self):
+        A, B = ["A1", "A2", "A3", "A4"], ["B1", "B2", "B3", "B4"]
+        ms, i = [], 0
+        for g in (A, B):
+            for x in range(4):
+                for y in range(x + 1, 4):
+                    i += 1
+                    # day 1 results only; the stronger seed (lower number) wins
+                    ms.append(self.m(i, "Group Stage", g[x], g[y], 0 if i in (1, 7) else None,
+                                     "2025-11-09" if i in (1, 7) else "2025-11-11"))
+        ms += [self.m(20, "Semifinal", None, None, d="2025-11-14"), self.m(21, "Semifinal", None, None, d="2025-11-14"),
+               self.m(22, "Final", None, None, d="2025-11-15")]
+        return {"id": "f", "matches": ms}
+
+    def test_groups_come_from_the_match_graph(self):
+        groups = rr_groups(self.event()["matches"])
+        self.assertEqual([sorted(g) for g in groups], [["A1", "A2", "A3", "A4"], ["B1", "B2", "B3", "B4"]])
+
+    def test_two_way_tie_goes_to_head_to_head(self):
+        import random
+        order = _standings(["X", "Y", "Z"], [("Y", "X"), ("X", "Z"), ("Y", "Z")], random.Random(0))
+        self.assertEqual(order[0], "Y")
+        order = _standings(["X", "Y", "Z", "W"], [("X", "Y"), ("Y", "Z"), ("Z", "W"), ("X", "W"), ("Y", "W"), ("Z", "X")],
+                           random.Random(0))
+        self.assertEqual(order[-1], "W")
+
+    def test_simulate_finals_probabilities(self):
+        ratings = {p: 1500 for p in ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4"]}
+        ratings["A1"] = 1900
+        title, semis = simulate_finals(self.event()["matches"], ratings, 3000, 3)
+        self.assertAlmostEqual(sum(title.values()), 1.0, places=6)
+        self.assertAlmostEqual(sum(semis.values()), 4.0, places=6)
+        self.assertEqual(max(title, key=title.get), "A1")
+
+    def test_projected_field_keeps_top_two_seeds_apart(self):
+        field = ["S%d" % i for i in range(1, 9)]
+        ratings = {p: 2400 if p in ("S1", "S2") else 1200 for p in field}
+        title, semis = simulate_finals([], ratings, 2000, 4, projected=field)
+        self.assertAlmostEqual(semis["S1"], 1.0, places=6)  # both giants always reach the semis
+        self.assertAlmostEqual(semis["S2"], 1.0, places=6)
+        self.assertGreater(title["S1"] + title["S2"], 0.99)
+
+    def test_as_of_rr_hides_knockout_players_until_groups_finish(self):
+        ev = self.event()
+        ev["matches"][-3].update(a="A1", an="A1", b="B2", bn="B2", w=0, status="final")
+        rolled = as_of_rr(ev, "2025-11-10")
+        semi = [m for m in rolled if m["id"] == "20"][0]
+        self.assertIsNone(semi["a"])
+        self.assertEqual(semi["status"], "scheduled")
 
 
 if __name__ == "__main__":

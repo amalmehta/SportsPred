@@ -62,13 +62,17 @@ TENNIS_TOURS = {
         "Australian Open", "Roland Garros", "French Open", "Wimbledon", "US Open",
         "BNP Paribas Open", "Indian Wells", "Miami Open", "Monte-Carlo", "Monte Carlo", "Mutua Madrid",
         "Internazionali", "Italian Open", "National Bank Open", "Canadian Open", "Omnium Banque",
-        "Cincinnati", "Shanghai", "Paris Masters", "Rolex Paris"]},
+        "Cincinnati", "Shanghai", "Paris Masters", "Rolex Paris", "ATP Finals"]},
     "wta": {"name": "WTA", "keywords": [
         "Australian Open", "Roland Garros", "French Open", "Wimbledon", "US Open",
         "Qatar", "Doha", "Dubai", "BNP Paribas Open", "Indian Wells", "Miami Open", "Mutua Madrid",
         "Internazionali", "Italian Open", "National Bank Open", "Canadian Open", "Omnium Banque",
-        "Cincinnati", "China Open", "Wuhan"]},
+        "Cincinnati", "China Open", "Wuhan", "WTA Finals"]},
 }
+TENNIS_EXCLUDE = ["Next Gen"]  # same format as the ATP Finals, but not covered
+# Season finales: 8 players, two round-robin groups of 4, top two in each group reach the semi-finals.
+# Until ESPN publishes the groups, the field is projected from the current top 8 in the rankings.
+TENNIS_FINALS = ["ATP Finals", "WTA Finals"]
 GRAND_SLAMS = ["Australian Open", "Roland Garros", "French Open", "Wimbledon", "US Open"]
 
 # ESPN doesn't publish court surfaces, so tournaments are matched by name. Anything unmatched is hard.

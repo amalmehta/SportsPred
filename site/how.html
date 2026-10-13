@@ -34,11 +34,12 @@
     <li><b>Champions and Europa League</b>: finish the 36-team league phase, then the knockout playoffs (9th–24th), round of 16 and onwards, with two-legged ties and a one-off final.</li>
     <li><b>International tournaments</b>: finish the groups, then the knockout bracket.</li>
     <li><b>Tennis</b>: play the rest of the draw round by round.</li>
+    <li><b>ATP and WTA Finals</b>: two round-robin groups of four (most wins first, a two-way tie goes to head-to-head), then semi-finals (group winner against the other group's runner-up) and a final. Before the groups are drawn, the field is projected from the current top 8 in the rankings and the draw is simulated too.</li>
   </ul>
   <p>A team's title chance is simply how often it won across those 10,000 runs.</p>
 
   <h2>4. Odds over time</h2>
-  <p>The charts replay the season: for each match day the model uses only the results and ratings known at the end of that day, then runs the simulation again. That's how the line can be drawn from before the first match, and it shows how the race changed as results came in. A new point is added every day.</p>
+  <p>The charts replay the season: for each match day the model uses only the results and ratings known at the end of that day, then runs the simulation again. That's how the line can be drawn from before the first match, and it shows how the race changed as results came in. A new point is added with every update (every 3 hours).</p>
 
   <h2>5. How accurate is it?</h2>
   <p>Each match is checked against the prediction the model would have made just before kick-off, over the last 12 months:</p>
@@ -56,7 +57,8 @@
     <li>Injuries, suspensions, rotation, transfers and managers: only results go in.</li>
     <li>Tennis surfaces come from a list of tournament names (ESPN doesn't publish them); unlisted events count as hard court, and indoor and outdoor hard courts are treated alike.</li>
     <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockout draws are approximated by seeding.</li>
-    <li>Points deductions and head-to-head tie-breakers aren't modelled.</li>
+    <li>Points deductions and soccer head-to-head tie-breakers aren't modelled. At the tennis Finals, three-way ties are split at random rather than by sets and games won.</li>
+    <li>The projected Finals field uses the 52-week rankings because ESPN doesn't publish the Race; withdrawals and alternates only show up once the real draw does.</li>
   </ul>
   <p class="muted small">For fun and for learning how forecasting works. Not betting advice.</p>
 </main>

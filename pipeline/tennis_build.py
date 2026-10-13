@@ -5,9 +5,10 @@ from datetime import date, timedelta
 
 from . import config
 from .common import SITE_DATA_DIR, day, now_iso, write_json
-from .tennis_data import load_tour
-from .tennis_model import (TennisElo, as_of, best_of_five, fit_surface_weight, main_draw,
-                           rated_matches, score, simulate_draw, surface_of, win_prob)
+from .tennis_data import fetch_rankings, load_tour
+from .tennis_model import (TennisElo, as_of, as_of_rr, best_of_five, fit_surface_weight, is_group_match,
+                           main_draw, rated_matches, rr_groups, score, simulate_draw, simulate_finals,
+                           surface_of, win_prob)
 
 
 def seed_for(*parts):
@@ -15,15 +16,30 @@ def seed_for(*parts):
 
 
 def is_covered(ev, tour):
-    return any(k.lower() in (ev["name"] or "").lower() for k in config.TENNIS_TOURS[tour]["keywords"])
+    name = (ev["name"] or "").lower()
+    if any(k.lower() in name for k in config.TENNIS_EXCLUDE):
+        return False
+    return any(k.lower() in name for k in config.TENNIS_TOURS[tour]["keywords"])
+
+
+def is_finals(ev):
+    return any(k.lower() in (ev["name"] or "").lower() for k in config.TENNIS_FINALS)
+
+
+def has_groups(ev):
+    return any(is_group_match(m) and m["a"] and m["b"] for m in ev["matches"])
 
 
 def is_slam(ev):
     return any(s in (ev["name"] or "") for s in config.GRAND_SLAMS)
 
 
-def event_payload(ev, tour, elo, snaps, today_iso):
+def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
     rounds = main_draw(ev)
+    finals = is_finals(ev)
+    projected = None
+    if finals and not has_groups(ev) and projected_field:
+        projected = [p for p, _ in projected_field]
     bo5 = tour == "atp" and is_slam(ev)
     surface = surface_of(ev["name"], config.TENNIS_SURFACES)
     ratings = elo.ratings_for(surface)  # each player's blend of overall and this-surface rating
@@ -33,6 +49,8 @@ def event_payload(ev, tour, elo, snaps, today_iso):
             for slot in ("a", "b"):
                 if m[slot]:
                     players[m[slot]] = m[slot + "n"]
+    if projected:
+        players.update(dict(projected_field))
     finished = [m for _, ms in rounds for m in ms if m["status"] in ("final", "retired", "walkover")]
     final_round = rounds[-1][1] if rounds else []
     champion = None
@@ -40,10 +58,16 @@ def event_payload(ev, tour, elo, snaps, today_iso):
         f = final_round[0]
         champion = f["a"] if f["w"] == 0 else f["b"]
 
-    now = simulate_draw(rounds, ratings, bo5, config.SIMS_TODAY, seed_for(ev["id"], today_iso[:10])) if rounds else {}
+    seed = seed_for(ev["id"], today_iso[:10])
+    p_sf = {}
+    if finals:
+        flat = [m for _, ms in rounds for m in ms]
+        now, p_sf = simulate_finals(flat, ratings, config.SIMS_TODAY, seed, projected) if (flat or projected) else ({}, {})
+    else:
+        now = simulate_draw(rounds, ratings, bo5, config.SIMS_TODAY, seed) if rounds else {}
 
     series_days, series = [], []
-    if rounds:
+    if rounds and not projected:
         days = sorted({day(m["date"]) for m in finished if day(m["date"]) < today_iso[:10]})
         first = min((day(m["date"]) for _, ms in rounds for m in ms if m["date"]), default=None)
         if first:
@@ -51,8 +75,13 @@ def event_payload(ev, tour, elo, snaps, today_iso):
             for d in [pre] + days:
                 if d not in snaps:
                     continue
-                series.append(simulate_draw(as_of(ev, d), elo.blend_snapshot(snaps[d], surface), bo5, config.SIMS_REPLAY, seed_for(ev["id"], d)))
+                past = elo.blend_snapshot(snaps[d], surface)
+                if finals:
+                    series.append(simulate_finals(as_of_rr(ev, d), past, config.SIMS_REPLAY, seed_for(ev["id"], d))[0])
+                else:
+                    series.append(simulate_draw(as_of(ev, d), past, bo5, config.SIMS_REPLAY, seed_for(ev["id"], d)))
                 series_days.append(d)
+    if now:
         series_days.append(today_iso[:10])
         series.append(now)
 
@@ -60,9 +89,27 @@ def event_payload(ev, tour, elo, snaps, today_iso):
     for m in finished:
         if m["w"] is not None and m["a"] and m["b"]:
             lost.add(m["b"] if m["w"] == 0 else m["a"])
-    rows = sorted(({"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)),
-                    "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost} for p in players),
-                  key=lambda r: (-r["p_win"], not r["alive"], -r["rating"]))
+    group_of, record = {}, {}
+    if finals:
+        # a group-stage loss doesn't knock anyone out: still in = can still win the title
+        lost = {p for p in players if now.get(p, 0.0) == 0.0 and p != champion}
+        comps = rr_groups([m for _, ms in rounds for m in ms])
+        if len(comps) == 2:
+            group_of = {p: "Group " + "AB"[i] for i, g in enumerate(comps) for p in g}
+        for m in finished:
+            if is_group_match(m) and m["w"] is not None and m["a"] and m["b"]:
+                w, l = (m["a"], m["b"]) if m["w"] == 0 else (m["b"], m["a"])
+                record.setdefault(w, [0, 0])[0] += 1
+                record.setdefault(l, [0, 0])[1] += 1
+    rows = []
+    for p in players:
+        row = {"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)),
+               "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost}
+        if finals:
+            row.update({"p_sf": round(p_sf.get(p, 0.0), 4), "group": group_of.get(p),
+                        "record": "%d–%d" % tuple(record.get(p, [0, 0]))})
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["p_win"], not r["alive"], -r["rating"]))
 
     def p_match(a, b):
         p = win_prob(ratings.get(a, 1500), ratings.get(b, 1500))
@@ -87,14 +134,16 @@ def event_payload(ev, tour, elo, snaps, today_iso):
     t = today_iso[:10]
     if champion:
         status = "finished"
-    elif not rounds or (ev["start"] or "")[:10] > t:
+    elif not rounds or projected or (ev["start"] or "")[:10] > t:
         status = "upcoming"
     else:
         status = "live"
     fav = rows[0] if rows and rows[0]["p_win"] > 0 else None
     return {
         "id": ev["id"], "sport": "tennis", "tour": config.TENNIS_TOURS[tour]["name"], "name": ev["name"],
-        "group": tour + ("-slam" if is_slam(ev) else "-1000"), "start": ev["start"], "end": ev["end"],
+        "group": tour + ("-finals" if finals else "-slam" if is_slam(ev) else "-1000"),
+        "format": "finals" if finals else "knockout", "projected": bool(projected),
+        "start": ev["start"], "end": ev["end"],
         "slam": is_slam(ev), "surface": surface, "best_of": 5 if bo5 else 3, "updated": now_iso(), "status": status,
         "defending": ev.get("defending"), "champion": players.get(champion) if champion else None,
         "table": rows, "upcoming": upcoming[:30], "recent": recent,
@@ -135,9 +184,15 @@ def build(today_iso):
                        "matches_by_surface": by_surface,
                        "backtest": score(elo, recent, elo.weight),
                        "backtest_overall_only": score(elo, recent, 0.0)}
+        field = None
+        if any(is_finals(ev) and not has_groups(ev) for ev in targets):
+            try:
+                field = fetch_rankings(tour, 8)
+            except RuntimeError as err:
+                print("  ! %s rankings: %s" % (tour, err))
         for ev in targets:
             print("  simulating %s %s" % (tour.upper(), ev["name"]))
-            comps.append(event_payload(ev, tour, elo, snaps, today_iso))
+            comps.append(event_payload(ev, tour, elo, snaps, today_iso, field))
     return comps, model
 
 

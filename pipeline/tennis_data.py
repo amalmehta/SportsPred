@@ -99,3 +99,11 @@ def load_tour(tour, first=None, ahead_days=45, step=3):
     write_json(index_path, sorted(fetched))
     print("  tennis %s: %d events (%d day queries)" % (tour, len(events), n_fetch))
     return sorted(events.values(), key=lambda e: e["start"] or "")
+
+
+def fetch_rankings(tour, top=8):
+    """Current singles ranking (ESPN), best first: [(player id, name)]."""
+    data = fetch("%s/site/v2/sports/tennis/%s/rankings" % (ESPN, tour))
+    ranks = ((data.get("rankings") or [{}])[0]).get("ranks", [])
+    ranks = sorted(ranks, key=lambda r: r.get("current", 999))
+    return [(str(r["athlete"]["id"]), r["athlete"]["displayName"]) for r in ranks[:top]]

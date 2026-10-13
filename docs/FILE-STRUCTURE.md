@@ -15,8 +15,8 @@ SportsPred/
 │   ├── soccer_model.py        Soccer Elo, goals model, accuracy scoring
 │   ├── soccer_sim.py          Monte Carlo: league tables, UEFA league phase, groups, knockouts
 │   ├── soccer_build.py        Club and international predictions, odds-over-time replays
-│   ├── tennis_data.py         ESPN ATP and WTA singles draws and results
-│   ├── tennis_model.py        Tennis Elo (overall + per-surface), best-of-five conversion, draw simulation
+│   ├── tennis_data.py         ESPN ATP and WTA singles draws, results and rankings
+│   ├── tennis_model.py        Tennis Elo (overall + per-surface), best-of-five conversion, draw and Finals simulation
 │   └── tennis_build.py        Tournament predictions and replays
 ├── tests/
 │   └── test_models.py         Unit tests for models and simulators (no network)

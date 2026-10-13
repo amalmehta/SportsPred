@@ -40,15 +40,15 @@ flowchart TD
 | `soccer_model.py` | `Elo`: sequential ratings with a goal-difference multiplier, a home advantage, faster updates for new teams, and snapshots at chosen dates. `GoalsModel`: expected goals for each side = exp(base ± slope × rating gap / 400); goals are Poisson. It gives win/draw/loss chances and the likeliest score. `fit_goals_model` fits base and slope by maximum likelihood. |
 | `soccer_sim.py` | Vectorised Monte Carlo (numpy). `sim_table` plays out remaining fixtures with per-simulation rating noise. Each format adds its own rules: leagues (top of the table), UEFA's 36-team league phase (then playoffs, round of 16, two-legged ties, one-off final), and groups then knockout. Knockout ties are solved exactly from goal-difference distributions, not sampled. Knockouts already under way are rebuilt from the real ties (aggregate scores, shoot-out winners). |
 | `soccer_build.py` | Runs the club and international pipelines: fits home advantage by grid search, runs Elo once with snapshots, simulates each competition today plus once per past match day (odds over time), and assembles the JSON for each competition. |
-| `tennis_data.py` | Queries ESPN every 3 days of the calendar, per tour, and keeps that tour's singles draw for each event. Events finished more than 2 weeks ago are frozen to `data/tennis/`, so later runs only fetch recent dates. |
-| `tennis_model.py` | Tennis Elo (K = 250 / (matches + 5)^0.4, Slams × 1.1). Each player has an overall rating plus one each for hard, clay and grass (updated only by matches on that surface). Predictions use (1 − w) × overall + w × surface; `fit_surface_weight` picks w by log loss over the last year. Also holds `surface_of` (tournament name → surface), best-of-five conversion, `as_of` (the draw as it stood on a given day) and `simulate_draw`. |
-| `tennis_build.py` | Picks the Grand Slams and 1000-level events from 30 days ago to 45 days ahead, then simulates each one today and per past match day. |
+| `tennis_data.py` | Queries ESPN every 3 days of the calendar, per tour, and keeps that tour's singles draw for each event. Events finished more than 2 weeks ago are frozen to `data/tennis/`, so later runs only fetch recent dates. `fetch_rankings` reads the current top 8 for projected Finals fields. |
+| `tennis_model.py` | Tennis Elo (K = 250 / (matches + 5)^0.4, Slams × 1.1). Each player has an overall rating plus one each for hard, clay and grass (updated only by matches on that surface). Predictions use (1 − w) × overall + w × surface; `fit_surface_weight` picks w by log loss over the last year. Also holds `surface_of` (tournament name → surface), best-of-five conversion, `as_of` (the draw as it stood on a given day) and `simulate_draw`. For the season finales: `rr_groups` (groups worked out from who plays whom, because ESPN doesn't name them), `as_of_rr`, and `simulate_finals` (round robin → semis → final, with an optional projected field and seeded group draw). |
+| `tennis_build.py` | Picks the Grand Slams, 1000-level events and the ATP/WTA Finals from 30 days ago to 45 days ahead, then simulates each one today and per past match day. For a finale with no groups yet, it fetches the top 8 in the rankings as a projected field. |
 | `build.py` | Entry point. Runs each part in isolation, so a failing part keeps its previous output. Writes `index.json` (competition summaries) and `model.json` (parameters and accuracy). |
 | `site/` | Plain HTML, CSS and JavaScript, no build step. Chart.js (from cdnjs) draws the odds-over-time chart. `app.js` holds the shared header, settings dialog (⌘,), feedback tab, colour-coded tags and number formatting. |
 
 ## Main flows
 
-**Daily refresh.** GitHub Actions (every 3 hours, on push, or by hand) restores `data/` from the cache, runs the tests, runs `python -m pipeline.build`, then uploads `site/` to GitHub Pages.
+**Scheduled refresh.** GitHub Actions (every 3 hours, on push, or by hand) restores `data/` from the cache, runs the tests, runs `python -m pipeline.build`, then uploads `site/` to GitHub Pages.
 
 **A soccer prediction.**
 1. Load every match from 2021 onwards for 13 competitions (the 7 predicted, plus 6 rating-only leagues so clubs from smaller leagues are rated through Europe).
@@ -61,6 +61,7 @@ flowchart TD
 1. Rate every ATP or WTA singles match since 2024 in date order, tagging each with its tournament's surface, and update both the overall and the surface rating. Fit the surface blend w on the last 12 months.
 2. For each covered event, rebuild the main draw. ESPN gives no bracket positions, so each known player is linked to the match they came from, and open (TBD) slots are filled at random from the unlinked winners of the round before.
 3. Play the rest of the draw 10,000 times using each player's rating blended for that event's surface (best of five for men's Slams).
+4. ATP/WTA Finals instead: groups come from the group-stage match graph (pieces of groups are joined at random while ESPN has only listed early matches). Every pair in a group of four meets once; standings go on wins, with a two-way tie decided by head-to-head. The semis pair each group winner with the other group's runner-up. Before any group is published, the projected top 8 is drawn into groups with seeds 1 and 2 kept apart and 3/4, 5/6 and 7/8 split. The table also shows the chance of reaching the semis.
 
 ## Where data lives
 
@@ -80,12 +81,13 @@ flowchart TD
 - **Rating noise in simulations (sd 50 Elo).** Without it, fixed ratings make long-range odds overconfident (Arsenal's 2026–27 pre-season chance went from 83% to 70% once it was added).
 - **Odds over time by replay, not stored snapshots.** The chart is rebuilt each run from what was known on each day. It has full history from the first run and needs no stored state. If the model changes, the whole history is redrawn consistently.
 - **Surface ratings blended with overall, by name lookup.** ESPN publishes no surface, so `config.TENNIS_SURFACES` maps tournament names to clay or grass, and everything else is hard. A separate surface rating alone is noisy (grass has few matches), so it is blended with the overall rating, and the data picks the mix. On the last year this lifted ATP from 63.7% to 63.9% called and WTA from 63.6% to 64.0%, with lower log loss on both. The blend is one parameter fitted and scored on the same year, so the gain is slightly optimistic.
+- **Projected Finals field before the draw (user's choice).** Odds are available weeks earlier, at the cost of a stand-in field (52-week top 8 instead of the Race), clearly labelled on the page.
 - **Exact knockout-tie maths.** Tie probabilities come from convolving goal-difference distributions, so they're cached per pairing and the per-simulation loop stays cheap.
 - **Approximate brackets.** The UEFA draw (seeded pairs) and tennis open slots are approximated, as described above.
 
 ## Testing
 
-- `tests/test_models.py` (18 unit tests, no network): probabilities sum to one and follow rating gaps, Elo is zero-sum and snapshots are taken in the right order, the goals-model fit recovers known parameters, tie maths is symmetric and respects aggregate leads, knockout state reads aggregates and shoot-outs, best-of-five helps favourites, draw simulation handles TBD slots, `as_of` undoes later results, the surface lookup works, surface ratings only move on their own surface, and the blend fit prefers surface ratings when results really do split by surface.
+- `tests/test_models.py` (23 unit tests, no network): probabilities sum to one and follow rating gaps, Elo is zero-sum and snapshots are taken in the right order, the goals-model fit recovers known parameters, tie maths is symmetric and respects aggregate leads, knockout state reads aggregates and shoot-outs, best-of-five helps favourites, draw simulation handles TBD slots, `as_of` undoes later results, the surface lookup works, surface ratings only move on their own surface, the blend fit prefers surface ratings when results really do split by surface, and finales get their groups from the match graph, settle two-way ties by head-to-head, return title odds summing to 1 and semi odds summing to 4, keep the top two seeds apart in projected draws, and `as_of_rr` hides semi-final players until the groups are done.
 - Backtest on every build: each match in the last 12 months is scored against its pre-match prediction (accuracy, Brier score, log loss, predicted vs actual draw rate). Results are in `model.json` and on the How It Works page. Tennis also reports `backtest_overall_only`, so the surface gain stays visible.
 - CI runs the tests before every build, and a failing test blocks publishing.
 
@@ -95,6 +97,7 @@ flowchart TD
 - Tennis surfaces come from a name list; unlisted events count as hard, and indoor and outdoor hard courts are treated alike.
 - Points deductions and head-to-head tie-breakers aren't modelled.
 - The UEFA knockout draw is approximated by seeding; tennis open slots aren't placed in the exact half of the draw.
-- Round-robin events (ATP and WTA Finals) aren't predicted.
+- ATP/WTA Finals: three-way ties are split at random (not by sets/games). Before the draw, the field comes from the 52-week rankings (ESPN has no Race), so withdrawals and alternates only appear once the real draw does.
+- The Next Gen ATP Finals aren't predicted.
 - Tennis events only get odds once ESPN publishes the main draw.
 - Independent Poisson goals slightly under-predict draws (about 22.7% predicted vs 24.1% actual for clubs).

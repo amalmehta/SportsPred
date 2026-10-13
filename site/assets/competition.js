@@ -20,6 +20,11 @@
     if (c.status === "finished" && (c.champion || c.favourite)) {
       return `<div class="hero"><div><div class="muted small">Champion</div><div class="big">🏆 ${SP.esc(c.champion || c.favourite.name)}</div></div></div>`;
     }
+    const note = c.projected ? `<div class="panel" style="margin-bottom:16px"><b>Projected field.</b> <span class="muted">The groups aren't drawn yet, so these odds use the current top 8 in the rankings and simulate the draw (seeds 1 and 2 apart). The real field is the top 8 in the year-to-date Race and can differ by a name or two. Odds switch to the real groups as soon as they're published.</span></div>` : "";
+    if (c.favourite && c.status !== "finished" && note) {
+      return note + `<div class="hero"><div><div class="muted small">Favourite</div><div class="big">${SP.esc(c.favourite.name)}</div></div>
+      <div class="lab"><div class="big">${SP.prob(c.favourite.p)}</div>chance to win the title</div></div>`;
+    }
     if (!c.favourite) {
       return `<div class="panel"><b>The draw isn't out yet.</b> <span class="muted">Odds appear as soon as ESPN publishes the main draw${c.defending ? ` · defending champion: ${SP.esc(c.defending)}` : ""}.</span></div>`;
     }
@@ -36,6 +41,16 @@
   function oddsTable() {
     const rows = showAll ? c.table : c.table.slice(0, LIMIT);
     if (!rows.length) return "";
+    if (c.format === "finals") {
+      const groups = rows.some(r => r.group);
+      return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th>${groups ? "<th>Group</th>" : ""}<th class="num">W–L</th>
+        <th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th class="num">Reach semis</th><th class="num">Win title</th></tr></thead><tbody>
+        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.esc(r.player)}${c.champion === r.player ? " 🏆" : ""}</td>
+          ${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}<td class="num">${SP.esc(r.record || "")}</td>
+          <td class="num opt">${r.rating}</td><td class="num">${SP.prob(r.p_sf)}</td>
+          <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
+      </tbody></table></div>`;
+    }
     if (tennis) {
       return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
         ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.esc(r.player)}</td>
@@ -79,7 +94,8 @@
 
   function render() {
     const court = c.surface ? `${c.surface[0].toUpperCase()}${c.surface.slice(1)} court · ` : "";
-    const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · ${court}best of ${c.best_of} sets` : `${c.season} season`;
+    const fmt = c.format === "finals" ? "two groups of four, top two reach the semi-finals · " : "";
+    const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · ${fmt}${court}best of ${c.best_of} sets` : `${c.season} season`;
     const h = c.history;
     const canChart = h && h.dates.length > 1 && h.series.length;
     page.innerHTML = `
@@ -89,7 +105,7 @@
       ${hero()}
       <h2>${tennis ? "Title odds over the tournament" : "Title odds over the season"}</h2>
       <div class="panel">${canChart ? `<div class="chart-box"><canvas id="chart" aria-label="Chance to win over time"></canvas></div><div class="legend" id="legend"></div>`
-        : `<div class="muted">The chart fills in as results come in.</div>`}</div>
+        : `<div class="muted">The chart fills in as results come in${c.projected ? ", starting when the groups are drawn" : ""}.</div>`}</div>
       <h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>
       <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
       <div class="two">
