@@ -82,7 +82,6 @@ Decided without asking:
 - Repo is public (needed for GitHub Pages on a free plan).
 
 Proposals (not built):
-- Store each day's live odds alongside the replay to compare against them later.
 - Mac app wrapper, if wanted later.
 
 CHANGELOG:
@@ -110,3 +109,4 @@ CHANGELOG:
 - 2026-10-13 — added surface-specific tennis ratings (overall + hard/clay/grass Elo, blend fitted on results)
 - 2026-10-13 — added ATP and WTA Finals predictions (round robin + semis; projected field until the draw)
 - 2026-10-13 — added World Cup qualifying group predictions (qualify / playoff / top group; switches on when 2030 qualifiers are scheduled)
+- 2026-10-13 — added a daily log of published odds, shown as dots alongside the replay (stored on the published site)

@@ -59,6 +59,7 @@ Edit `pipeline/config.py`:
 - `TENNIS_TOURS`: name keywords for the tennis events that get predictions.
 - `TENNIS_SURFACES`: name keywords for clay and grass events (everything else counts as hard court).
 - `TENNIS_FINALS` / `TENNIS_EXCLUDE`: which events use the round-robin finale format, and names to skip (the Next Gen ATP Finals).
+- `SITE_URL`: where the site is published; each run reads the earlier daily-odds log from there (change it if you fork the project).
 - `SIMS_TODAY` / `SIMS_REPLAY`: simulation counts (more runs are steadier but slower).
 
 To test a past date, set `SPORTSPRED_TODAY=YYYY-MM-DD` before running the build.
