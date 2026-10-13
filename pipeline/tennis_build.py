@@ -1,14 +1,13 @@
 """Build tennis predictions: player ratings, title odds per tournament, odds over time."""
 import hashlib
-import math
 import os
 from datetime import date, timedelta
 
 from . import config
 from .common import SITE_DATA_DIR, day, now_iso, write_json
 from .tennis_data import load_tour
-from .tennis_model import (TennisElo, as_of, best_of_five, main_draw, rated_matches,
-                           simulate_draw, win_prob)
+from .tennis_model import (TennisElo, as_of, best_of_five, fit_surface_weight, main_draw,
+                           rated_matches, score, simulate_draw, surface_of, win_prob)
 
 
 def seed_for(*parts):
@@ -26,6 +25,8 @@ def is_slam(ev):
 def event_payload(ev, tour, elo, snaps, today_iso):
     rounds = main_draw(ev)
     bo5 = tour == "atp" and is_slam(ev)
+    surface = surface_of(ev["name"], config.TENNIS_SURFACES)
+    ratings = elo.ratings_for(surface)  # each player's blend of overall and this-surface rating
     players = {}
     for _, ms in rounds:
         for m in ms:
@@ -39,7 +40,7 @@ def event_payload(ev, tour, elo, snaps, today_iso):
         f = final_round[0]
         champion = f["a"] if f["w"] == 0 else f["b"]
 
-    now = simulate_draw(rounds, elo.ratings, bo5, config.SIMS_TODAY, seed_for(ev["id"], today_iso[:10])) if rounds else {}
+    now = simulate_draw(rounds, ratings, bo5, config.SIMS_TODAY, seed_for(ev["id"], today_iso[:10])) if rounds else {}
 
     series_days, series = [], []
     if rounds:
@@ -50,7 +51,7 @@ def event_payload(ev, tour, elo, snaps, today_iso):
             for d in [pre] + days:
                 if d not in snaps:
                     continue
-                series.append(simulate_draw(as_of(ev, d), snaps[d], bo5, config.SIMS_REPLAY, seed_for(ev["id"], d)))
+                series.append(simulate_draw(as_of(ev, d), elo.blend_snapshot(snaps[d], surface), bo5, config.SIMS_REPLAY, seed_for(ev["id"], d)))
                 series_days.append(d)
         series_days.append(today_iso[:10])
         series.append(now)
@@ -59,12 +60,12 @@ def event_payload(ev, tour, elo, snaps, today_iso):
     for m in finished:
         if m["w"] is not None and m["a"] and m["b"]:
             lost.add(m["b"] if m["w"] == 0 else m["a"])
-    rows = sorted(({"player": players[p], "id": p, "rating": round(elo.ratings.get(p, 1500)),
+    rows = sorted(({"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)),
                     "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost} for p in players),
                   key=lambda r: (-r["p_win"], not r["alive"], -r["rating"]))
 
     def p_match(a, b):
-        p = win_prob(elo.ratings.get(a, 1500), elo.ratings.get(b, 1500))
+        p = win_prob(ratings.get(a, 1500), ratings.get(b, 1500))
         return best_of_five(p) if bo5 else p
 
     upcoming = []
@@ -76,7 +77,7 @@ def event_payload(ev, tour, elo, snaps, today_iso):
     recent = []
     for m in sorted(finished, key=lambda m: (m["date"] or "", m["id"]), reverse=True)[:12]:
         if m["id"] in elo.pre and m["w"] is not None:
-            ra, rb = elo.pre[m["id"]]
+            ra, rb = elo.pre_rating(m["id"])
             p = win_prob(ra, rb)
             p = best_of_five(p) if bo5 else p
             recent.append({"date": m["date"], "round": m["round"], "a": m["an"], "b": m["bn"], "w": m["w"],
@@ -94,7 +95,7 @@ def event_payload(ev, tour, elo, snaps, today_iso):
     return {
         "id": ev["id"], "sport": "tennis", "tour": config.TENNIS_TOURS[tour]["name"], "name": ev["name"],
         "group": tour + ("-slam" if is_slam(ev) else "-1000"), "start": ev["start"], "end": ev["end"],
-        "slam": is_slam(ev), "best_of": 5 if bo5 else 3, "updated": now_iso(), "status": status,
+        "slam": is_slam(ev), "surface": surface, "best_of": 5 if bo5 else 3, "updated": now_iso(), "status": status,
         "defending": ev.get("defending"), "champion": players.get(champion) if champion else None,
         "table": rows, "upcoming": upcoming[:30], "recent": recent,
         "history": {"dates": series_days,
@@ -109,7 +110,7 @@ def build(today_iso):
     comps, model = [], {}
     for tour in config.TENNIS_TOURS:
         events = load_tour(tour)
-        matches = rated_matches(events, config.GRAND_SLAMS)
+        matches = rated_matches(events, config.GRAND_SLAMS, config.TENNIS_SURFACES)
         targets = [e for e in events if is_covered(e, tour) and e["end"] and e["start"]
                    and e["end"][:10] >= (t - timedelta(days=30)).isoformat()
                    and e["start"][:10] <= (t + timedelta(days=45)).isoformat()]
@@ -123,21 +124,17 @@ def build(today_iso):
         elo = TennisElo()
         snaps = elo.run(matches, wanted)
 
-        # backtest: pre-match favourite vs result over the last year
+        # fit the overall/surface blend on the last year, and report both for comparison
         cut = (t - timedelta(days=365)).isoformat()
-        n = acc = brier = ll = 0
+        recent = [m for m in matches if m["date"] >= cut]
+        elo.weight = fit_surface_weight(elo, recent)
+        by_surface = {}
         for m in matches:
-            if m["date"] >= cut:
-                ra, rb = elo.pre[m["id"]]
-                p = win_prob(ra, rb)
-                y = 1 if m["w"] == 0 else 0
-                n += 1
-                acc += 1 if (p >= 0.5) == (y == 1) else 0
-                brier += (p - y) ** 2
-                ll += -math.log(max(p if y else 1 - p, 1e-9))
-        model[tour] = {"matches_rated": len(matches), "players": len(elo.ratings),
-                       "backtest": {"n": n, "accuracy": acc / n if n else None, "brier": brier / n if n else None,
-                                    "log_loss": ll / n if n else None}}
+            by_surface[m["surface"]] = by_surface.get(m["surface"], 0) + 1
+        model[tour] = {"matches_rated": len(matches), "players": len(elo.ratings), "surface_weight": elo.weight,
+                       "matches_by_surface": by_surface,
+                       "backtest": score(elo, recent, elo.weight),
+                       "backtest_overall_only": score(elo, recent, 0.0)}
         for ev in targets:
             print("  simulating %s %s" % (tour.upper(), ev["name"]))
             comps.append(event_payload(ev, tour, elo, snaps, today_iso))

@@ -29,54 +29,125 @@ def best_of_five(p3):
     return s ** 3 * (1 + 3 * q + 6 * q * q)
 
 
-class TennisElo:
-    def __init__(self, init=1500.0):
-        self.init = init
-        self.ratings = {}
-        self.n = defaultdict(int)
-        self.names = {}
-        self.pre = {}  # match id -> (rating a, rating b) before the match
+SURFACES = ("hard", "clay", "grass")
 
-    def rating(self, p):
-        return self.ratings.get(p, self.init)
+
+def surface_of(name, table):
+    """'clay' / 'grass' from the tournament-name lookup in config; everything else is 'hard'."""
+    low = (name or "").lower()
+    for surface, keys in table.items():
+        if any(k.lower() in low for k in keys):
+            return surface
+    return "hard"
+
+
+class TennisElo:
+    """Two ratings per player: overall (every match) and one per surface (matches on that surface only).
+
+    A prediction blends them: (1 - weight) * overall + weight * surface. The weight is fitted on results.
+    """
+
+    def __init__(self, init=1500.0, weight=0.5):
+        self.init, self.weight = init, weight
+        self.ratings = {}
+        self.surf = {s: {} for s in SURFACES}
+        self.n = defaultdict(int)
+        self.ns = {s: defaultdict(int) for s in SURFACES}
+        self.names = {}
+        self.pre = {}  # match id -> (overall a, overall b, surface a, surface b) before the match
+
+    def rating(self, p, surface=None):
+        overall = self.ratings.get(p, self.init)
+        if surface is None:
+            return overall
+        return (1 - self.weight) * overall + self.weight * self.surf[surface].get(p, self.init)
+
+    def ratings_for(self, surface):
+        """Blended rating of every known player on one surface."""
+        return {p: self.rating(p, surface) for p in self.ratings}
+
+    def pre_rating(self, match_id, weight=None):
+        w = self.weight if weight is None else weight
+        oa, ob, sa, sb = self.pre[match_id]
+        return (1 - w) * oa + w * sa, (1 - w) * ob + w * sb
 
     def update(self, m):
         a, b = m["a"], m["b"]
-        ra, rb = self.rating(a), self.rating(b)
-        self.pre[m["id"]] = (ra, rb)
-        e = win_prob(ra, rb)
+        surface = m.get("surface", "hard")
+        sr = self.surf[surface]
+        ra, rb = self.ratings.get(a, self.init), self.ratings.get(b, self.init)
+        sa, sb = sr.get(a, self.init), sr.get(b, self.init)
+        self.pre[m["id"]] = (ra, rb, sa, sb)
         s = 1.0 if m["w"] == 0 else 0.0
         mult = m.get("k_mult", 1.0)
+        e = win_prob(ra, rb)
         self.ratings[a] = ra + mult * k_factor(self.n[a]) * (s - e)
         self.ratings[b] = rb - mult * k_factor(self.n[b]) * (s - e)
+        e = win_prob(sa, sb)
+        ns = self.ns[surface]
+        sr[a] = sa + mult * k_factor(ns[a]) * (s - e)
+        sr[b] = sb - mult * k_factor(ns[b]) * (s - e)
         self.n[a] += 1
         self.n[b] += 1
+        ns[a] += 1
+        ns[b] += 1
         self.names[a], self.names[b] = m["an"], m["bn"]
 
+    def snapshot(self):
+        return dict(self.ratings), {s: dict(r) for s, r in self.surf.items()}
+
+    def blend_snapshot(self, snap, surface):
+        overall, surf = snap
+        w, sr = self.weight, surf[surface]
+        return {p: (1 - w) * r + w * sr.get(p, self.init) for p, r in overall.items()}
+
     def run(self, matches, snapshot_days=()):
+        """Process matches in order. Returns {day: snapshot taken after that day's matches}."""
         wanted = sorted(set(snapshot_days))
         snaps, wi = {}, 0
         for m in matches:
             d = day(m["date"])
             while wi < len(wanted) and wanted[wi] < d:
-                snaps[wanted[wi]] = dict(self.ratings)
+                snaps[wanted[wi]] = self.snapshot()
                 wi += 1
             self.update(m)
         while wi < len(wanted):
-            snaps[wanted[wi]] = dict(self.ratings)
+            snaps[wanted[wi]] = self.snapshot()
             wi += 1
         return snaps
 
 
-def rated_matches(events, grand_slam_names):
-    """Flatten events into completed, decisive singles matches in date order."""
+def score(elo, matches, weight):
+    """Accuracy / Brier / log loss of pre-match predictions at a given surface weight."""
+    n = acc = brier = ll = 0.0
+    for m in matches:
+        ra, rb = elo.pre_rating(m["id"], weight)
+        p = win_prob(ra, rb)
+        y = 1 if m["w"] == 0 else 0
+        n += 1
+        acc += 1 if (p >= 0.5) == (y == 1) else 0
+        brier += (p - y) ** 2
+        ll += -math.log(max(p if y else 1 - p, 1e-9))
+    if not n:
+        return {"n": 0}
+    return {"n": int(n), "accuracy": acc / n, "brier": brier / n, "log_loss": ll / n}
+
+
+def fit_surface_weight(elo, matches, grid=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)):
+    """Pick the overall/surface blend with the lowest log loss on these matches."""
+    return min(grid, key=lambda w: score(elo, matches, w).get("log_loss", 9.9))
+
+
+def rated_matches(events, grand_slam_names, surfaces=None):
+    """Flatten events into completed, decisive singles matches in date order, tagged with surface."""
     out = []
     for ev in events:
         slam = any(s in ev["name"] for s in grand_slam_names)
+        surface = surface_of(ev["name"], surfaces or {})
         for m in ev["matches"]:
             if m["status"] != "final" or m["w"] is None or not m["a"] or not m["b"]:
                 continue
-            out.append(dict(m, k_mult=1.1 if slam else 1.0, event=ev["id"]))
+            out.append(dict(m, k_mult=1.1 if slam else 1.0, event=ev["id"], surface=surface))
     out.sort(key=lambda m: (m["date"] or "", round_rank(m["round"])))
     return out
 

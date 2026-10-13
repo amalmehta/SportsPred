@@ -20,7 +20,7 @@
   <ul>
     <li><b>Club soccer</b> uses every match since 2021 in the big five leagues, the Champions, Europa and Conference Leagues, and five more leagues (Portugal, Netherlands, Scotland, Belgium, Turkey), so clubs from different countries are measured on one scale. Wins by bigger margins count for more, and home teams get a head start that the model fits from the data.</li>
     <li><b>International soccer</b> uses every international since 1990; World Cup and continental tournament matches count more than friendlies.</li>
-    <li><b>Tennis</b> uses every ATP and WTA singles match since 2024. New players' ratings move fast and established players' slowly (the approach FiveThirtyEight popularised). Grand Slam matches count a little more.</li>
+    <li><b>Tennis</b> uses every ATP and WTA singles match since 2024. New players' ratings move fast and established players' slowly (the approach FiveThirtyEight popularised). Grand Slam matches count a little more. Each player also has a <b>rating per surface</b> (hard, clay, grass) built only from matches on that surface. A prediction blends the two; the mix is fitted to the last year of results <span id="surface-mix"></span>.</li>
   </ul>
 
   <h2>2. Turn two ratings into match chances</h2>
@@ -54,7 +54,7 @@
   <h2>7. What it doesn't know</h2>
   <ul>
     <li>Injuries, suspensions, rotation, transfers and managers: only results go in.</li>
-    <li>Tennis surface: one rating for clay, grass and hard courts.</li>
+    <li>Tennis surfaces come from a list of tournament names (ESPN doesn't publish them); unlisted events count as hard court, and indoor and outdoor hard courts are treated alike.</li>
     <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockout draws are approximated by seeding.</li>
     <li>Points deductions and head-to-head tie-breakers aren't modelled.</li>
   </ul>
@@ -76,6 +76,13 @@
     add("ATP tennis", m.tennis && m.tennis.atp && m.tennis.atp.backtest);
     add("WTA tennis", m.tennis && m.tennis.wta && m.tennis.wta.backtest);
     box.innerHTML = items.join("") || '<div class="muted">Run the build to see accuracy.</div>';
+    const t = m.tennis || {};
+    if (t.atp && t.wta && t.atp.surface_weight != null) {
+      const pc = w => Math.round(w * 100) + "%";
+      const gain = x => x.backtest_overall_only ? ` (${(x.backtest_overall_only.accuracy * 100).toFixed(1)}% → ${(x.backtest.accuracy * 100).toFixed(1)}% called)` : "";
+      document.getElementById("surface-mix").textContent =
+        `(currently ${pc(t.atp.surface_weight)} surface for men${gain(t.atp)} and ${pc(t.wta.surface_weight)} for women${gain(t.wta)})`;
+    }
   } catch (e) { box.innerHTML = '<div class="muted">Run the build to see accuracy.</div>'; SP.footer(); }
 })();
 </script>

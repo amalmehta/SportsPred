@@ -9,14 +9,14 @@ SportsPred/
 │   └── update.yml             Every 3 hours: test, build, publish to GitHub Pages
 ├── pipeline/                  Python: data → ratings → simulations → site/data
 │   ├── build.py               Entry point (python3 -m pipeline.build); writes index.json and model.json
-│   ├── config.py              Competitions covered, history range, simulation counts, name aliases
+│   ├── config.py              Competitions covered, tennis surfaces by name, history range, simulation counts, name aliases
 │   ├── common.py              HTTP fetching, JSON files, dates
 │   ├── soccer_data.py         ESPN soccer results and fixtures, group tables, international archive
 │   ├── soccer_model.py        Soccer Elo, goals model, accuracy scoring
 │   ├── soccer_sim.py          Monte Carlo: league tables, UEFA league phase, groups, knockouts
 │   ├── soccer_build.py        Club and international predictions, odds-over-time replays
 │   ├── tennis_data.py         ESPN ATP and WTA singles draws and results
-│   ├── tennis_model.py        Tennis Elo, best-of-five conversion, draw simulation
+│   ├── tennis_model.py        Tennis Elo (overall + per-surface), best-of-five conversion, draw simulation
 │   └── tennis_build.py        Tournament predictions and replays
 ├── tests/
 │   └── test_models.py         Unit tests for models and simulators (no network)

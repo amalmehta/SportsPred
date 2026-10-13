@@ -56,6 +56,7 @@ Edit `pipeline/config.py`:
 - `SOCCER_COMPETITIONS`: club competitions (any ESPN soccer league slug, e.g. `ned.1`).
 - `INTERNATIONAL_COMPETITIONS`: international tournaments, shown only while they have fixtures.
 - `TENNIS_TOURS`: name keywords for the tennis events that get predictions.
+- `TENNIS_SURFACES`: name keywords for clay and grass events (everything else counts as hard court).
 - `SIMS_TODAY` / `SIMS_REPLAY`: simulation counts (more runs are steadier but slower).
 
 To test a past date, set `SPORTSPRED_TODAY=YYYY-MM-DD` before running the build.

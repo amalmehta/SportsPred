@@ -37,7 +37,7 @@
     const rows = showAll ? c.table : c.table.slice(0, LIMIT);
     if (!rows.length) return "";
     if (tennis) {
-      return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
+      return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
         ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.esc(r.player)}</td>
           <td class="num opt">${r.rating}</td><td>${r.alive ? (c.champion === r.player ? "Champion" : "In") : "Out"}</td>
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
@@ -78,7 +78,8 @@
   }
 
   function render() {
-    const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · best of ${c.best_of} sets` : `${c.season} season`;
+    const court = c.surface ? `${c.surface[0].toUpperCase()}${c.surface.slice(1)} court · ` : "";
+    const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · ${court}best of ${c.best_of} sets` : `${c.season} season`;
     const h = c.history;
     const canChart = h && h.dates.length > 1 && h.series.length;
     page.innerHTML = `

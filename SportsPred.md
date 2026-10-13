@@ -80,7 +80,6 @@ Decided without asking:
 - Repo is public (needed for GitHub Pages on a free plan).
 
 Proposals (not built):
-- Surface-specific tennis ratings (clay/grass/hard).
 - Predictions for ATP/WTA Finals and World Cup qualifying groups.
 - Store each day's live odds alongside the replay to compare against them later.
 - Mac app wrapper, if wanted later.
@@ -107,3 +106,4 @@ CHANGELOG:
 - 2026-10-08 — added meta-instruction: color-code tags by similarity (related share a hue family, each distinct)
 - 2026-10-09 — added meta-instruction: apps that take files have an Upload button, drop anywhere, and paste
 - 2026-10-13 — built SportsPred website: soccer + tennis predictions, odds over time, GitHub Pages deploy every 3 hours
+- 2026-10-13 — added surface-specific tennis ratings (overall + hard/clay/grass Elo, blend fitted on results)

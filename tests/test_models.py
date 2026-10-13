@@ -5,7 +5,8 @@ import numpy as np
 
 from pipeline.soccer_model import Elo, GoalsModel, fit_goals_model, gd_multiplier, score_predictions
 from pipeline.soccer_sim import Matchups, knockout_state, sim_table, simulate_league
-from pipeline.tennis_model import as_of, best_of_five, round_rank, simulate_draw, win_prob
+from pipeline.tennis_model import (TennisElo, as_of, best_of_five, fit_surface_weight, round_rank, simulate_draw,
+                                   surface_of, win_prob)
 
 
 class SoccerModelTests(unittest.TestCase):
@@ -133,6 +134,39 @@ class TennisTests(unittest.TestCase):
         final = rounds[1][1][0]
         self.assertEqual(semi["status"], "scheduled")
         self.assertIsNone(final["a"])  # P1 hadn't reached the final yet
+
+
+class SurfaceTests(unittest.TestCase):
+    TABLE = {"clay": ["Roland Garros"], "grass": ["Wimbledon"]}
+
+    def match(self, i, surface, winner="A"):
+        return {"id": str(i), "date": "2025-01-%02dT10:00Z" % (i + 1), "a": winner, "an": winner,
+                "b": "B" if winner == "A" else "A", "bn": "", "w": 0, "surface": surface}
+
+    def test_surface_lookup(self):
+        self.assertEqual(surface_of("Roland Garros", self.TABLE), "clay")
+        self.assertEqual(surface_of("The Wimbledon Championships", self.TABLE), "grass")
+        self.assertEqual(surface_of("US Open", self.TABLE), "hard")
+
+    def test_surface_ratings_only_move_on_their_surface(self):
+        elo = TennisElo(weight=0.5)
+        elo.run([self.match(i, "clay") for i in range(5)])
+        self.assertGreater(elo.surf["clay"]["A"], 1500)
+        self.assertNotIn("A", elo.surf["grass"])
+        self.assertGreater(elo.rating("A", "clay"), elo.rating("A", "grass"))
+        elo.weight = 0.0
+        self.assertAlmostEqual(elo.rating("A", "grass"), elo.rating("A"))
+
+    def test_fit_prefers_surface_when_results_split_by_surface(self):
+        elo = TennisElo()
+        ms = []
+        for i in range(30):  # A always wins on clay, B always wins on grass
+            ms.append(self.match(2 * i, "clay", "A"))
+            ms.append(self.match(2 * i + 1, "grass", "B"))
+        for k, m in enumerate(ms):
+            m["date"] = "2025-%02d-%02dT10:00Z" % (1 + k // 28, 1 + k % 28)
+        elo.run(ms)
+        self.assertGreaterEqual(fit_surface_weight(elo, ms[20:]), 0.8)
 
 
 if __name__ == "__main__":

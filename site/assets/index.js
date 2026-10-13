@@ -16,7 +16,7 @@
   function card(c) {
     const href = `competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}`;
     const sub = c.sport === "tennis"
-      ? `${SP.date(c.start)} – ${SP.date(c.end)}`
+      ? `${SP.date(c.start)} – ${SP.date(c.end)}${c.surface ? " · " + SP.esc(c.surface) : ""}`
       : `${SP.esc(c.season || "")}`;
     let body;
     if (c.status === "finished" && (c.champion || c.favourite)) {
