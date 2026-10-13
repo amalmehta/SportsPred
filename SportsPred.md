@@ -61,7 +61,7 @@ website with sports predictions
 OPEN QUESTIONS / ASSUMPTIONS:
 
 Asked and answered (2026-10-13):
-- Website only (the DELIVERABLES field overrides "Mac app first").
+- Website first (the DELIVERABLES field overrides "Mac app first"); the Mac app wrapper was added afterwards on request.
 - Predictions site plus one "How it works" page, no lessons or exercises.
 - Free, keyless data: ESPN public scoreboard JSON (soccer + tennis), martj42 international results.
 - Coverage: big five leagues, Champions League, Europa League, international tournaments while on;
@@ -82,7 +82,6 @@ Decided without asking:
 - Repo is public (needed for GitHub Pages on a free plan).
 
 Proposals (not built):
-- Mac app wrapper, if wanted later.
 
 CHANGELOG:
 
@@ -110,3 +109,4 @@ CHANGELOG:
 - 2026-10-13 — added ATP and WTA Finals predictions (round robin + semis; projected field until the draw)
 - 2026-10-13 — added World Cup qualifying group predictions (qualify / playoff / top group; switches on when 2030 qualifiers are scheduled)
 - 2026-10-13 — added a daily log of published odds, shown as dots alongside the replay (stored on the published site)
+- 2026-10-13 — added the Mac app (native window around the live site, Mac menus and shortcuts, ⌘, settings)

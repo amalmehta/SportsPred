@@ -30,6 +30,7 @@ flowchart TD
   B --> J[(site/data/*.json)]
   J --> W[Static site<br/>index · competition · how it works]
   W --> P[GitHub Pages]
+  P --> M[Mac app<br/>AppKit window + WKWebView]
 ```
 
 ## Components
@@ -45,6 +46,7 @@ flowchart TD
 | `tennis_build.py` | Picks the Grand Slams, 1000-level events and the ATP/WTA Finals from 30 days ago to 45 days ahead, then simulates each one today and per past match day. For a finale with no groups yet, it fetches the top 8 in the rankings as a projected field. |
 | `live_log.py` | Keeps each day's published odds (the headline number: title, or qualifying chance) in a `live` list inside each competition's JSON, one entry per day, for the current season only. Each run merges the local copy with the copy on the live site, then adds today's entry. |
 | `build.py` | Entry point. Runs each part in isolation, so a failing part keeps its previous output. Writes `index.json` (competition summaries) and `model.json` (parameters and accuracy). |
+| `mac/` | The Mac app: an AppKit window with a `WKWebView` showing the live site. It adds native menus (Settings ⌘, opens the site's settings panel; Go ⌘1–3; Back, Forward, Reload, Zoom; Help → Send Feedback), follows the page title in the window subtitle, opens off-site links in the default browser, refreshes when you return after 15 minutes, and shows an offline page with Try again. The web view's own storage keeps the site's settings between launches. |
 | `site/` | Plain HTML, CSS and JavaScript, no build step. Chart.js (from cdnjs) draws the odds-over-time chart. `app.js` holds the shared header, settings dialog (⌘,), feedback tab, colour-coded tags and number formatting. |
 
 ## Main flows
@@ -88,10 +90,13 @@ flowchart TD
 - **Projected Finals field before the draw (user's choice).** Odds are available weeks earlier, at the cost of a stand-in field (52-week top 8 instead of the Race), clearly labelled on the page.
 - **World Cup qualifying built ahead of time (user's choice).** It was built in October 2026 with no 2030 qualifiers scheduled, so it was checked by replaying the 2026 cycle with `SPORTSPRED_TODAY`. As of 1 Oct 2025, the model's favourite topped 11 of 12 European groups (the miss was Scotland, 19%). As of 1 Mar 2025, it gave Paraguay 83% to qualify from South America, which they did. Replays can't reproduce the past group lineup (ESPN standings only show the current stage), so a replay of an early date shows the latest stage's groups.
 - **Live odds stored on the published site, not in git.** Every run reads the previous `live` log from `SITE_URL` and republishes it with today's entry, so there are no bot commits or extra storage. Trade-off: if the site is deleted or unreachable for a whole day, that day is missing, and the log restarts if the site itself is lost. A failed deploy is harmless, because the next run reads the last good version. The chart shows the published dots next to the replay lines. The two differ when ratings settle after the fact or the model changes, which is what the comparison is for.
+- **Mac app wraps the live site instead of bundling it.** It always shows the latest predictions without app updates, and the site and app can't drift apart. Trade-off: it needs an internet connection, and the app is only ad-hoc signed (not notarised), so other Macs need right-click → Open the first time.
 - **Exact knockout-tie maths.** Tie probabilities come from convolving goal-difference distributions, so they're cached per pairing and the per-simulation loop stays cheap.
 - **Approximate brackets.** The UEFA draw (seeded pairs) and tennis open slots are approximated, as described above.
 
 ## Testing
+
+- Mac app: built with `mac/build-app.sh` (universal binary, signature verified) and checked by hand: the live site loads, Settings… (⌘,) opens the settings panel, the Go menu navigates, and the subtitle follows the page.
 
 - `tests/test_models.py` (26 unit tests, no network): probabilities sum to one and follow rating gaps, Elo is zero-sum and snapshots are taken in the right order, the goals-model fit recovers known parameters, tie maths is symmetric and respects aggregate leads, knockout state reads aggregates and shoot-outs, best-of-five helps favourites, draw simulation handles TBD slots, `as_of` undoes later results, the surface lookup works, surface ratings only move on their own surface, the blend fit prefers surface ratings when results really do split by surface, and finales get their groups from the match graph, settle two-way ties by head-to-head, return title odds summing to 1 and semi odds summing to 4, keep the top two seeds apart in projected draws, and `as_of_rr` hides semi-final players until the groups are done, the live log keeps the latest entry per day and drops other seasons, and it logs the right headline number per format.
 - Backtest on every build: each match in the last 12 months is scored against its pre-match prediction (accuracy, Brier score, log loss, predicted vs actual draw rate). Results are in `model.json` and on the How It Works page. Tennis also reports `backtest_overall_only`, so the surface gain stays visible.

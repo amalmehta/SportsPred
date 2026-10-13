@@ -8,6 +8,8 @@ Live winner predictions for soccer leagues and tennis tournaments, worked out fr
 
 ![Upcoming match predictions and recent results against the model's call](docs/images/Match%20Predictions.jpg)
 
+![The SportsPred Mac app](docs/images/Mac%20App.jpg)
+
 ```mermaid
 flowchart LR
   A[ESPN results & fixtures<br/>International results archive] --> B[Elo ratings]
@@ -19,6 +21,7 @@ flowchart LR
 **Covers:** Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, international tournaments and World Cup qualifying groups while they're on, plus ATP and WTA Grand Slams, 1000-level events and the season-ending ATP and WTA Finals.
 
 - **Live site:** https://amalmehta.github.io/SportsPred/
+- **Mac app:** build it with `./mac/build-app.sh` ([how](docs/INSTRUCTIONS.md#mac-app))
 - [How to set it up, run it and use it](docs/INSTRUCTIONS.md)
 - [System design](docs/SYSTEM-DESIGN.md)
 - [What's where](docs/FILE-STRUCTURE.md)

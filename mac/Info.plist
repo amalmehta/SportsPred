@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>SportsPred</string>
+  <key>CFBundleDisplayName</key><string>SportsPred</string>
+  <key>CFBundleIdentifier</key><string>com.amalmehta.SportsPred</string>
+  <key>CFBundleExecutable</key><string>SportsPred</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.sports</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>Live winner predictions for soccer and tennis. Not betting advice.</string>
+  <key>SPSiteURL</key><string>https://amalmehta.github.io/SportsPred/</string>
+</dict>
+</plist>

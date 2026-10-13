@@ -39,6 +39,13 @@ SportsPred/
 │       ├── model.json         Fitted parameters and accuracy
 │       ├── soccer/<slug>.json
 │       └── tennis/<tour>-<event>.json
+├── mac/                       The Mac app (a native window around the live site)
+│   ├── Package.swift          Swift package, macOS 12+
+│   ├── Sources/SportsPred/main.swift  Window, web view, menus and shortcuts, offline page
+│   ├── Info.plist             App name, bundle id, site address (SPSiteURL)
+│   ├── AppIcon.svg            App icon source
+│   ├── build-app.sh           Builds mac/build/SportsPred.app (universal, ad-hoc signed)
+│   └── build/                 Build output (not committed)
 └── docs/
     ├── INSTRUCTIONS.md        Setup, run, use
     ├── SYSTEM-DESIGN.md       Architecture and design decisions

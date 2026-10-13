@@ -32,6 +32,28 @@ python3 -m http.server 8765 --directory site
 
 Then open http://localhost:8765. Opening the HTML files straight from disk won't work, because the pages load their data with `fetch`.
 
+## Mac app
+
+A native Mac window around the live site, with Mac menus and shortcuts. It needs Xcode (or the Xcode command-line tools) and macOS 12 or newer.
+
+```bash
+./mac/build-app.sh
+```
+
+This builds `mac/build/SportsPred.app`, a universal app for Apple silicon and Intel. Open it, or drag it to Applications. Add `--zip` to also make `mac/build/SportsPred.zip` to share. The app is signed for this Mac only and isn't notarised, so on another Mac, right-click it and choose **Open** the first time.
+
+| Shortcut | Does |
+|---|---|
+| ⌘, | Settings (the site's settings panel) |
+| ⌘1 / ⌘2 / ⌘3 | Soccer / Tennis / How It Works |
+| ⇧⌘H | Home |
+| ⌘[ / ⌘] | Back / Forward (or swipe) |
+| ⌘R | Reload (it also refreshes on its own when you come back after 15 minutes) |
+| ⌘+ / ⌘− / ⌘0 | Zoom in / out / actual size |
+| Help → Send Feedback… | Opens the feedback panel |
+
+Links that leave the site, such as the GitHub feedback form, open in your default browser. Without an internet connection, the app shows a "Can't reach SportsPred" page with a Try again button. To point the app somewhere else (for a fork), change `SPSiteURL` in `mac/Info.plist`.
+
 ## Run the tests
 
 ```bash
