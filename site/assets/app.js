@@ -63,6 +63,16 @@ const SP = (() => {
     return d.toLocaleString(undefined, opts) + (withTime && settings.times === "utc" ? " UTC" : "");
   }
   function date(iso) { return when(iso, false); }
+  function time(iso) {
+    const d = parseIso(iso), opts = { hour: "2-digit", minute: "2-digit" };
+    if (settings.times === "utc") opts.timeZone = "UTC";
+    return isNaN(d) ? "" : d.toLocaleTimeString(undefined, opts) + (settings.times === "utc" ? " UTC" : "");
+  }
+  // calendar day in the viewer's chosen time zone, for grouping
+  function dayKey(iso) {
+    const d = parseIso(iso);
+    return isNaN(d) ? "" : d.toLocaleDateString("en-CA", settings.times === "utc" ? { timeZone: "UTC" } : {});
+  }
 
   let offline = false;
   async function json(path) {
@@ -74,7 +84,13 @@ const SP = (() => {
       offline = true;
     }
     if (!r.ok) throw new Error(path + " " + r.status);
+    if (r.headers.get("X-SportsPred-Cache")) offline = true;  // answered by the offline cache (sw.js)
     return r.json();
+  }
+
+  // installable, and readable offline (not inside the Mac app, which has its own cache)
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost") && !/SportsPredMac/.test(navigator.userAgent)) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 
   /* ---------- header, settings, feedback ---------- */
@@ -198,5 +214,5 @@ const SP = (() => {
     }
   }
 
-  return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, json, REPO };
+  return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO };
 })();

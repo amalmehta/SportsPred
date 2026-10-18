@@ -5,6 +5,7 @@
 """
 import argparse
 import os
+from datetime import datetime, timedelta, timezone
 import time
 import traceback
 
@@ -32,6 +33,34 @@ def search_index(summaries):
                 "what": "qualify" if key == "p_qualify" else "win", "out": r.get("alive") is False,
                 "status": c.get("status")})
     return [{"n": n, "in": sorted(v, key=lambda e: -e["p"])} for n, v in sorted(found.items())]
+
+
+def today_digest(summaries, hours=36, min_move=0.03):
+    """Home page digest: the next day and a half of matches everywhere, and the biggest odds moves
+    between the last two days the site published (from each competition's live log)."""
+    now = datetime.now(timezone.utc)
+    soon = (now + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%MZ")
+    since = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%MZ")  # keep games that may still be on
+    matches, movers = [], []
+    for s in summaries:
+        c = read_json(os.path.join(SITE_DATA_DIR, s["sport"], s["id"] + ".json"))
+        if not c:
+            continue
+        where = {"id": c["id"], "sport": c["sport"], "comp": c["name"], "group": c.get("group"), "country": c.get("country")}
+        for m in c.get("upcoming", []):
+            if since <= (m.get("date") or "") <= soon:
+                matches.append(dict(m, **where))
+        live = c.get("live") or []
+        if len(live) >= 2:
+            before, after = live[-2], live[-1]
+            for team in set(before["p"]) | set(after["p"]):
+                a, b = before["p"].get(team, 0.0), after["p"].get(team, 0.0)
+                if abs(b - a) >= min_move:
+                    movers.append(dict(where, team=team, before=a, after=b, since=before["date"],
+                                       what="qualify" if c.get("format") == "qualifying" else "win"))
+    matches.sort(key=lambda m: m["date"])
+    movers.sort(key=lambda m: -abs(m["after"] - m["before"]))
+    return {"updated": now_iso(), "matches": matches, "movers": movers[:8]}
 
 
 def main(argv=None):
@@ -75,6 +104,7 @@ def main(argv=None):
     model["updated"] = now_iso()
     write_json(model_path, model, compact=False)
     write_json(os.path.join(SITE_DATA_DIR, "search.json"), search_index(kept.values()))
+    write_json(os.path.join(SITE_DATA_DIR, "today.json"), today_digest(kept.values()), compact=False)
     if failed:
         raise SystemExit("failed: %s" % ", ".join(failed))
 

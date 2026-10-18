@@ -9,6 +9,9 @@
   try { index = await SP.json("data/index.json"); }
   catch (e) { sections.innerHTML = `<div class="empty">No predictions yet. Run <code>python3 -m pipeline.build</code> first.</div>`; return; }
   SP.footer(index.updated);
+  let digest = { matches: [], movers: [] };
+  try { digest = await SP.json("data/today.json"); } catch (e) { /* optional */ }
+  let allMatches = false;
 
   const ORDER = { live: 0, upcoming: 1, finished: 2 };
   const GROUP_ORDER = ["european", "domestic", "international", "qualifying", "atp-slam", "wta-slam", "atp-finals", "wta-finals", "atp-1000", "wta-1000"];
@@ -34,6 +37,37 @@
       ${body}${next}</a>`;
   }
 
+  function link(m) { return `competition.html?sport=${m.sport}&id=${encodeURIComponent(m.id)}`; }
+
+  // today's matches everywhere, and whose odds moved most since the day before
+  function digestHtml() {
+    const pick = x => sport === "all" || x.sport === sport;
+    const matches = (digest.matches || []).filter(pick), movers = (digest.movers || []).filter(pick);
+    let html = "";
+    if (matches.length) {
+      const shown = allMatches ? matches : matches.slice(0, 8);
+      html += `<h2>Coming up in the next day or so</h2><div class="matches">${shown.map(m => {
+        const tag = SP.tagFor({ id: m.id, group: m.group, sport: m.sport, country: m.country });
+        const home = m.home || m.a, away = m.away || m.b;
+        const p = Array.isArray(m.p) ? m.p : [m.p, 0, 1 - m.p];
+        const call = p[0] >= p[2] ? (p[0] >= p[1] ? home : "Draw") : (p[2] >= p[1] ? away : "Draw");
+        const best = Math.max(...p);
+        return `<a class="match today" href="${link(m)}"><div class="when">${SP.esc(SP.when(m.date))}${m.live ? ' <span class="status live">Live</span>' : ""}</div>
+          <div class="teams"><span>${SP.esc(home)}</span><span class="muted small">v</span><span>${SP.esc(away)}</span></div>
+          <div class="meta">${tag}<span>Pick: <b>${SP.esc(call)}</b> ${SP.prob(best)}</span></div></a>`;
+      }).join("")}</div>${matches.length > 8 ? `<p><button class="chip" id="more-matches">${allMatches ? "Show fewer" : `Show all ${matches.length}`}</button></p>` : ""}`;
+    }
+    if (movers.length) {
+      html += `<h2>Biggest moves since yesterday</h2><div class="movers">${movers.map(m => {
+        const up = m.after > m.before;
+        return `<a class="mover" href="${link(m)}"><span class="arrow" aria-hidden="true">${up ? "▲" : "▼"}</span>
+          <span><b>${SP.esc(m.team)}</b><span class="muted small"> · ${SP.esc(m.comp)}</span></span>
+          <span class="num">${SP.prob(m.before)} → <b>${SP.prob(m.after)}</b><span class="sr"> chance to ${m.what}, ${up ? "up" : "down"}</span></span></a>`;
+      }).join("")}</div>`;
+    }
+    return html;
+  }
+
   function render() {
     filters.innerHTML = [["all", "Everything"], ["soccer", "Soccer"], ["tennis", "Tennis"]]
       .map(([v, t]) => `<button class="chip ${sport === v ? "on" : ""}" data-v="${v}">${t}</button>`).join("");
@@ -49,7 +83,9 @@
       return `<h2>${title}</h2>` + (items.length ? `<div class="grid">${items.map(card).join("")}</div>`
         : `<div class="empty">Nothing ${s === "tennis" ? "on the ATP/WTA 1000 or Grand Slam calendar" : "in play"} right now.</div>`);
     });
-    sections.innerHTML = blocks.join("");
+    sections.innerHTML = digestHtml() + blocks.join("");
+    const more = document.getElementById("more-matches");
+    if (more) more.onclick = () => { allMatches = !allMatches; render(); };
   }
   filters.addEventListener("click", e => {
     const b = e.target.closest(".chip"); if (!b) return;

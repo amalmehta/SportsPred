@@ -131,6 +131,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc func zoomIn(_ sender: Any?) { webView.pageZoom = min(webView.pageZoom + 0.1, 3) }
     @objc func zoomOut(_ sender: Any?) { webView.pageZoom = max(webView.pageZoom - 0.1, 0.5) }
     @objc func actualSize(_ sender: Any?) { webView.pageZoom = 1 }
+    /// the page being shown, as a link someone else can open (never the offline placeholder)
+    var shareableURL: URL? {
+        guard let url = webView.url, url.scheme == "https", isSite(url) else { return nil }
+        return url
+    }
+    @objc func copyLink(_ sender: Any?) {
+        guard let url = shareableURL else { return NSSound.beep() }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([url as NSURL])
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+    }
+    @objc func share(_ sender: Any?) {
+        guard let url = shareableURL, let view = window.contentView else { return NSSound.beep() }
+        let picker = NSSharingServicePicker(items: [url])
+        picker.show(relativeTo: NSRect(x: view.bounds.maxX - 60, y: view.bounds.maxY - 40, width: 1, height: 1),
+                    of: view, preferredEdge: .minY)
+    }
+    @objc func openInBrowser(_ sender: Any?) { NSWorkspace.shared.open(shareableURL ?? siteURL) }
     @objc func openSource(_ sender: Any?) { NSWorkspace.shared.open(URL(string: "https://github.com/amalmehta/SportsPred")!) }
 
     // MARK: menus
@@ -163,6 +181,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
             .separator(),
             item("Quit SportsPred", #selector(NSApplication.terminate(_:)), "q"),
+        ])
+        _ = submenu("File", [
+            item("Share…", #selector(share(_:)), target: me),
+            item("Copy Link", #selector(copyLink(_:)), "c", [.command, .shift], target: me),
+            item("Open in Browser", #selector(openInBrowser(_:)), "o", [.command, .option], target: me),
+            .separator(),
+            item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ])
         _ = submenu("Edit", [
             item("Undo", Selector(("undo:")), "z"),

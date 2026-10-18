@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f6f6f3"/>
+  <rect x="80" y="80" width="120" height="120" rx="28" fill="#2a78d6"/>
+  <path d="M110 165 L140 135 L162 154 L176 140" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M155 120 H177 V142" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="230" y="168" font-family="Arial, Helvetica" font-size="64" font-weight="700" fill="#0b0b0b">SportsPred</text>
+  <text x="80" y="290" font-family="Arial, Helvetica" font-size="48" font-weight="700" fill="#0b0b0b">Who's going to win?</text>
+  <text x="80" y="350" font-family="Arial, Helvetica" font-size="30" fill="#52514e">Live title odds for soccer and tennis, from past results.</text>
+  <g font-family="Arial, Helvetica" font-size="28" fill="#0b0b0b">
+    <text x="80" y="450" font-weight="600">Premier League</text>
+    <rect x="420" y="428" width="560" height="26" rx="6" fill="#f0efec"/><rect x="420" y="428" width="310" height="26" rx="6" fill="#256abf"/>
+    <text x="80" y="510" font-weight="600">ATP Finals</text>
+    <rect x="420" y="488" width="560" height="26" rx="6" fill="#f0efec"/><rect x="420" y="488" width="340" height="26" rx="6" fill="#256abf"/>
+  </g>
+  <text x="80" y="585" font-family="Arial, Helvetica" font-size="24" fill="#7a7974">Updated about every hour · For fun and learning, not betting advice</text>
+</svg>

@@ -96,11 +96,21 @@
     return `<div class="${cls}" style="flex:${w} 1 0" title="${label}: ${SP.prob(p)}">${w >= 12 ? SP.prob(p) : ""}</div>`;
   }
 
+  // upcoming matches under one heading per day, so each card only needs the kick-off time
+  function byDay(list) {
+    let last = null;
+    return list.map(m => {
+      const key = SP.dayKey(m.date), head = key !== last ? `<div class="day">${SP.esc(SP.date(m.date))}</div>` : "";
+      last = key;
+      return head + matchRow(m, false);
+    }).join("");
+  }
+
   function matchRow(m, past) {
     if (tennis) {
       const pA = m.p, names = `<div class="teams"><span>${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}</span></div>`;
       const meta = past ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Upset"}</span>` : (m.live ? `<span class="status live">Live</span>` : "");
-      return `<div class="match"><div class="when">${SP.esc(SP.when(m.date))}<br>${SP.esc(m.round)}</div>${names}
+      return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}<br>${SP.esc(m.round)}</div>${names}
         <div class="split">${seg(pA, "h", m.a)}${seg(1 - pA, "a", m.b)}</div>
         <div class="meta"><span>${past ? "Pre-match chances" : "Win chances"}</span>${meta}</div></div>`;
     }
@@ -108,7 +118,7 @@
     const meta = past
       ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Missed"}</span>`
       : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${m.live ? `<span class="status live">Live</span>` : ""}`;
-    return `<div class="match"><div class="when">${SP.esc(SP.when(m.date))}</div>
+    return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}</div>
       <div class="teams"><span>${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}</span></div>
       <div class="split">${seg(m.p[0], "h", "Home win")}${seg(m.p[1], "d", "Draw")}${seg(m.p[2], "a", "Away win")}</div>
       <div class="meta">${past ? "<span>Pre-match: home · draw · away</span>" : ""}${meta}</div></div>`;
@@ -123,7 +133,8 @@
     page.innerHTML = `
       <p class="small"><a href="index.html?sport=${sport}">← All ${tennis ? "tennis" : "soccer"}</a></p>
       <div class="card-head" style="justify-content:flex-start;margin-bottom:6px">${SP.tagFor(c)}<span class="status ${c.status}">${statusText}</span></div>
-      <h1>${SP.esc(c.name)}</h1><p class="sub">${SP.esc(sub)}</p>
+      <div class="title-row"><h1>${SP.esc(c.name)}</h1><button class="chip" id="share" type="button">Share</button></div>
+      <p class="sub">${SP.esc(sub)}</p>
       ${hero()}
       <h2>${tennis ? "Title odds over the tournament" : qualifying ? "Chance to qualify over the campaign: the races that moved most" : "Title odds over the season"}</h2>
       <div class="panel">${canChart ? `<div class="chart-box" ${asTable ? 'hidden' : ""}><canvas id="chart" aria-label="Chance to win over time"></canvas></div>
@@ -134,11 +145,12 @@
       <h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>
       <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
       <div class="two">
-        <div><h2>Coming up</h2>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? c.upcoming.map(m => matchRow(m, false)).join("") : '<div class="empty">No scheduled matches.</div>'}</div></div>
+        <div><h2>Coming up</h2>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>
         <div><h2>Recent results vs. our call</h2>${recordLine()}<div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
       </div>`;
     if (canChart && !asTable) drawChart();
     if (canChart && asTable) legendOnly();
+    document.getElementById("share").onclick = share;
     const toggle = document.getElementById("as-table");
     if (toggle) toggle.onclick = () => { asTable = !asTable; const y = scrollY; render(); scrollTo(0, y); };
     const more = document.getElementById("more");
@@ -146,6 +158,21 @@
   }
 
   let asTable = false;
+
+  // share sheet where there is one (phones, Safari), otherwise copy the link
+  async function share() {
+    const btn = document.getElementById("share");
+    const fav = c.favourite ? ` ${c.favourite.name} ${SP.prob(c.favourite.p)}.` : "";
+    try {
+      if (navigator.share) { await navigator.share({ title: `${c.name} · SportsPred`, text: `${c.name}: who's going to win?${fav}`, url: location.href }); return; }
+      await navigator.clipboard.writeText(location.href);
+      btn.textContent = "Link copied";
+    } catch (e) {
+      if (e && e.name === "AbortError") return;  // closed the share sheet
+      btn.textContent = "Copy failed";
+    }
+    setTimeout(() => { btn.textContent = "Share"; }, 2000);
+  }
 
   function recordLine() {
     const r = c.record;

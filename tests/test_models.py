@@ -295,5 +295,29 @@ class CalibrationTests(unittest.TestCase):
         self.assertIsNone(track_record([]))
 
 
+class DigestTests(unittest.TestCase):
+    def test_today_digest_picks_soon_matches_and_big_moves(self):
+        import os, tempfile
+        from datetime import datetime, timedelta, timezone
+        from pipeline import build
+        from pipeline.common import write_json
+        iso = lambda h: (datetime.now(timezone.utc) + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%MZ")
+        comp = {"id": "x.1", "sport": "soccer", "name": "Test League", "group": "domestic", "table": [],
+                "upcoming": [{"date": iso(5), "home": "A", "away": "B", "p": [0.5, 0.3, 0.2]},
+                             {"date": iso(100), "home": "C", "away": "D", "p": [0.4, 0.3, 0.3]}],
+                "live": [{"date": "2026-10-16", "p": {"A": 0.50, "B": 0.30}},
+                         {"date": "2026-10-17", "p": {"A": 0.60, "B": 0.29}}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            old = build.SITE_DATA_DIR
+            build.SITE_DATA_DIR = tmp
+            try:
+                write_json(os.path.join(tmp, "soccer", "x.1.json"), comp)
+                d = build.today_digest([{"id": "x.1", "sport": "soccer"}])
+            finally:
+                build.SITE_DATA_DIR = old
+        self.assertEqual([m["home"] for m in d["matches"]], ["A"])          # only the next day and a half
+        self.assertEqual([(m["team"], m["after"]) for m in d["movers"]], [("A", 0.60)])  # B moved < 3 points
+
+
 if __name__ == "__main__":
     unittest.main()

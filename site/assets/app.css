@@ -7,14 +7,15 @@
   --border: #e2e1dc;
   --text: #0b0b0b;
   --text-2: #52514e;
-  --text-3: #7a7974;
+  --text-3: #6b6a65;
   --accent: #2a78d6;
+  --link: #256abf;  /* text links: darker than --accent so they pass 4.5:1 */
   --accent-ink: #ffffff;
   --good: #1e7a3c;
   --bad: #b3261e;
-  --bar-home: #2a78d6;
+  --bar-home: #256abf;
   --bar-draw: #b9b8b2;
-  --bar-away: #eb6834;
+  --bar-away: #b8461a;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
   --tag-l-bg: 92%; --tag-l-fg: 26%;
@@ -27,8 +28,8 @@
     color-scheme: dark;
     --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
     --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86;
-    --accent: #3987e5; --good: #4cc36f; --bad: #ff7a70;
-    --bar-home: #3987e5; --bar-draw: #5d5c57; --bar-away: #d95926;
+    --accent: #3987e5; --link: #3987e5; --good: #4cc36f; --bad: #ff7a70;
+    --bar-home: #256abf; --bar-draw: #5d5c57; --bar-away: #b8461a;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --tag-l-bg: 22%; --tag-l-fg: 82%;
@@ -39,8 +40,8 @@
   color-scheme: dark;
   --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
   --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86;
-  --accent: #3987e5; --good: #4cc36f; --bad: #ff7a70;
-  --bar-home: #3987e5; --bar-draw: #5d5c57; --bar-away: #d95926;
+  --accent: #3987e5; --link: #3987e5; --good: #4cc36f; --bad: #ff7a70;
+  --bar-home: #256abf; --bar-draw: #5d5c57; --bar-away: #b8461a;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --tag-l-bg: 22%; --tag-l-fg: 82%;
@@ -50,7 +51,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
+a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
 
@@ -169,8 +170,8 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 
 /* feedback tab */
 .fb-tab { position: fixed; right: 0; top: 50%; transform: translateY(-50%) rotate(180deg); writing-mode: vertical-rl;
-  background: var(--surface); border: 1px solid var(--border); border-right: 0; color: var(--text-3); font: 600 12px var(--font);
-  padding: 10px 5px; border-radius: 0 8px 8px 0; cursor: pointer; z-index: 20; opacity: .8; }
+  background: var(--surface); border: 1px solid var(--border); border-right: 0; color: var(--text-2); font: 600 12px var(--font);
+  padding: 10px 5px; border-radius: 0 8px 8px 0; cursor: pointer; z-index: 20; }
 .fb-tab:hover { opacity: 1; color: var(--text); }
 .fb-panel textarea, .fb-panel select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .fb-panel textarea { min-height: 110px; resize: vertical; }
@@ -214,3 +215,39 @@ footer { border-top: 1px solid var(--border); color: var(--text-3); font-size: 1
 .found .hit b { display: block; }
 .found .hit a { display: inline-block; margin: 2px 10px 0 0; font-size: 13px; }
 .found .none { padding: 10px 12px; color: var(--text-3); }
+
+/* links inside running text are underlined, so they don't rely on colour alone */
+p a, li a, footer a, .notice a { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* the day column stays put while the table scrolls sideways */
+#chart-table th:first-child, #chart-table td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+#chart-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 2; }
+#chart-table thead th:first-child { z-index: 3; }
+
+/* phones: the side tab would cover text, so feedback becomes a small pill in the corner */
+@media (max-width: 720px) {
+  .fb-tab { top: auto; bottom: 14px; right: 14px; transform: none; writing-mode: horizontal-tb; border: 1px solid var(--border);
+    border-radius: 999px; padding: 7px 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+  footer { padding-bottom: 72px; }
+}
+
+/* home page digest */
+a.match.today { color: var(--text); }
+a.match.today:hover { text-decoration: none; border-color: var(--text-3); }
+.match.today .meta { align-items: center; }
+.movers { display: grid; gap: 6px; }
+.mover { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 14px; color: var(--text); }
+.mover:hover { text-decoration: none; border-color: var(--text-3); }
+.mover .arrow { color: var(--text-2); font-size: 12px; }
+.mover .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.matches .day { font-size: 12px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; margin: 8px 0 -2px; }
+.matches .day:first-child { margin-top: 0; }
+
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.title-row h1 { margin-bottom: 4px; }
+.match.today .teams { justify-content: flex-start; gap: 8px; }
+.match.today .meta { justify-content: space-between; }

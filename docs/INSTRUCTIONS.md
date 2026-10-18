@@ -56,6 +56,9 @@ This builds `mac/build/SportsPred.app`, a universal app for Apple silicon and In
 | ⌘[ / ⌘] | Back / Forward (or swipe) |
 | ⌘R | Reload (it also refreshes on its own when you come back after 15 minutes) |
 | ⌘+ / ⌘− / ⌘0 | Zoom in / out / actual size |
+| ⇧⌘C | Copy a link to the page you're on |
+| ⌥⌘O | Open the page in your browser |
+| File → Share… | Share the page (Messages, Mail, AirDrop…) |
 | Help → Send Feedback… | Opens the feedback panel |
 
 Links that leave the site, such as the GitHub feedback form, open in your default browser. Without an internet connection, the app shows a "Can't reach SportsPred" page with a Try again button. To point the app somewhere else (for a fork), change `SPSiteURL` in `mac/Info.plist`.
@@ -71,7 +74,10 @@ python3 -m unittest discover -s tests
 - **Home page:** one card per competition with the current favourite and their chance to win. Use the chips to show only soccer or only tennis, or type in **Find a team or player** to see every competition someone is in and their chances.
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
-- **Feedback:** the small tab on the right edge opens a pre-filled GitHub issue.
+- **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
+- **Home page extras:** "Coming up in the next day or so" lists every match across competitions with the model's pick, and "Biggest moves since yesterday" shows whose odds changed most.
+- **Share:** each competition page has a Share button (the share sheet on phones and Safari, otherwise it copies the link). Shared links show a preview card.
+- **On your phone:** open the site in Safari or Chrome and choose **Add to Home Screen**. It opens like an app and shows the last predictions when you're offline.
 
 ## Hosting (GitHub Pages)
 
