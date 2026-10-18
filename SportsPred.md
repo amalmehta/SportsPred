@@ -110,3 +110,4 @@ CHANGELOG:
 - 2026-10-13 — added World Cup qualifying group predictions (qualify / playoff / top group; switches on when 2030 qualifiers are scheduled)
 - 2026-10-13 — added a daily log of published odds, shown as dots alongside the replay (stored on the published site)
 - 2026-10-13 — added the Mac app (native window around the live site, Mac menus and shortcuts, ⌘, settings)
+- 2026-10-17 — 10 improvements: hourly updates, tennis cache fix, publish check, last-updated and stale notice, steady chart colours, season track record, calibration chart, chart table view, team/player search, Mac app offline mode (model experiments tried and not adopted are listed in docs/SYSTEM-DESIGN.md)

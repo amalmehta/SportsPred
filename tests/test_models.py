@@ -262,5 +262,38 @@ class LiveLogTests(unittest.TestCase):
         self.assertEqual(headline(draw), {"P": 0.3})
 
 
+class PublishCheckTests(unittest.TestCase):
+    def test_good_and_bad_files(self):
+        from pipeline.check import problems_in
+        good = {"name": "L", "sport": "soccer", "format": "league", "favourite": {"name": "A"},
+                "table": [{"team": "A", "p_win": 0.6}, {"team": "B", "p_win": 0.4}],
+                "upcoming": [{"home": "A", "away": "B", "p": [0.5, 0.3, 0.2]}]}
+        self.assertEqual(problems_in(good), [])
+        bad = dict(good, table=[{"team": "A", "p_win": 0.6}, {"team": "B", "p_win": 0.1}])
+        self.assertTrue(problems_in(bad))
+        self.assertTrue(problems_in(dict(good, table=[])))
+        self.assertTrue(problems_in(dict(good, upcoming=[{"home": "A", "away": "B", "p": [0.9, 0.3, 0.2]}])))
+        awaiting = {"name": "T", "sport": "tennis", "favourite": None, "table": [], "upcoming": []}
+        self.assertEqual(problems_in(awaiting), [])
+        quals = {"name": "Q", "sport": "soccer", "format": "qualifying", "slots": {"direct": 1},
+                 "table": [{"team": t, "group": g, "p_win": 0.5, "p_qualify": 0.5, "p_playoff": 0.5}
+                           for g in ("A", "B") for t in (g + "1", g + "2")]}
+        self.assertEqual(problems_in(quals), [])
+
+
+class CalibrationTests(unittest.TestCase):
+    def test_bins_and_record(self):
+        from pipeline.common import calibration, track_record
+        pairs = [(0.75, 1)] * 30 + [(0.75, 0)] * 10 + [(0.15, 0)] * 5
+        rows = calibration(pairs)
+        self.assertEqual(len(rows), 1)  # the 10-20% band has too few predictions to show
+        self.assertAlmostEqual(rows[0]["p"], 0.75)
+        self.assertAlmostEqual(rows[0]["freq"], 0.75)
+        self.assertEqual(rows[0]["n"], 40)
+        self.assertEqual(calibration([(1.0, 1)] * 20)[0]["hi"], 1.0)  # p = 1 lands in the top band
+        self.assertEqual(track_record([(True, 0.1), (False, 0.5)]), {"n": 2, "called": 1, "brier": 0.3})
+        self.assertIsNone(track_record([]))
+
+
 if __name__ == "__main__":
     unittest.main()

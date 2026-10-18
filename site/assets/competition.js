@@ -126,17 +126,57 @@
       <h1>${SP.esc(c.name)}</h1><p class="sub">${SP.esc(sub)}</p>
       ${hero()}
       <h2>${tennis ? "Title odds over the tournament" : qualifying ? "Chance to qualify over the campaign: the races that moved most" : "Title odds over the season"}</h2>
-      <div class="panel">${canChart ? `<div class="chart-box"><canvas id="chart" aria-label="Chance to win over time"></canvas></div><div class="legend" id="legend"></div>`
+      <div class="panel">${canChart ? `<div class="chart-box" ${asTable ? 'hidden' : ""}><canvas id="chart" aria-label="Chance to win over time"></canvas></div>
+        <div id="chart-table" ${asTable ? "" : "hidden"}>${chartTable()}</div>
+        <div class="legend" id="legend"></div>
+        <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button></div>`
         : `<div class="muted">The chart fills in as results come in${c.projected ? ", starting when the groups are drawn" : ""}.</div>`}</div>
       <h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>
       <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
       <div class="two">
         <div><h2>Coming up</h2>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? c.upcoming.map(m => matchRow(m, false)).join("") : '<div class="empty">No scheduled matches.</div>'}</div></div>
-        <div><h2>Recent results vs. our call</h2><div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
+        <div><h2>Recent results vs. our call</h2>${recordLine()}<div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
       </div>`;
-    if (canChart) drawChart();
+    if (canChart && !asTable) drawChart();
+    if (canChart && asTable) legendOnly();
+    const toggle = document.getElementById("as-table");
+    if (toggle) toggle.onclick = () => { asTable = !asTable; const y = scrollY; render(); scrollTo(0, y); };
     const more = document.getElementById("more");
     if (more) more.onclick = () => { showAll = !showAll; const y = scrollY; render(); scrollTo(0, y); };
+  }
+
+  let asTable = false;
+
+  function recordLine() {
+    const r = c.record;
+    if (!r || !r.n) return "";
+    const pct = Math.round(100 * r.called / r.n);
+    const span = tennis ? "This tournament" : "This season";
+    const hint = tennis ? "how often the player we rated likelier won" : "how often the result we rated likeliest happened (home win, draw or away win)";
+    return `<p class="small muted" style="margin:-6px 0 10px" title="${hint}. Brier score: 0 is perfect, lower is better.">
+      ${span}: called <b>${r.called} of ${r.n}</b> (${pct}%) · Brier ${r.brier.toFixed(3)}</p>`;
+  }
+
+  // the chart's numbers as a table: one row per day, replay value with the published value beside it
+  function chartTable() {
+    const h = c.history, live = new Map((c.live || []).map(e => [e.date, e.p]));
+    if (!h || !h.series.length) return "";
+    const dates = [...new Set([...h.dates, ...live.keys()])].sort().reverse();
+    const idx = new Map(h.dates.map((d, i) => [d, i]));
+    return `<div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Day</th>
+      ${h.series.map(s => `<th class="num">${SP.esc(s.team)}</th>`).join("")}</tr></thead><tbody>
+      ${dates.map(d => `<tr><td>${SP.esc(SP.date(d + "T12:00Z"))}</td>${h.series.map(s => {
+        const r = idx.has(d) ? SP.prob(s.p[idx.get(d)]) : "–";
+        const pub = live.has(d) ? ` <span class="muted" title="published that day">(${SP.prob(live.get(d)[s.team] || 0)})</span>` : "";
+        return `<td class="num">${r}${pub}</td>`;
+      }).join("")}</tr>`).join("")}
+      </tbody></table></div><p class="small muted">Replay value, with the value this site published that day in brackets.</p>`;
+  }
+
+  function legendOnly() {
+    const colors = Array.from({ length: 8 }, (_, i) => css(`--s${i + 1}`));
+    document.getElementById("legend").innerHTML = c.history.series.map((s, i) =>
+      `<span><i style="background:${colors[i]}"></i>${SP.esc(s.team)} · ${SP.prob(s.p[s.p.length - 1])}</span>`).join("");
   }
 
   function drawChart() {

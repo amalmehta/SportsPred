@@ -196,3 +196,21 @@ footer { border-top: 1px solid var(--border); color: var(--text-3); font-size: 1
   .pbar { width: 40px; }
 }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+
+/* stale-data notice (amber family, with an icon so it isn't colour alone) */
+.notice { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid #c98500; border-radius: 8px;
+  padding: 10px 14px; margin: 0 0 18px; color: var(--text-2); font-size: 14px; }
+.notice::before { content: "⚠︎ "; color: #c98500; }
+
+/* home page search */
+.search { position: relative; max-width: 420px; margin: 0 0 14px; }
+.search input { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 12px; }
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.found { position: absolute; z-index: 15; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.12); max-height: 360px; overflow-y: auto; }
+.found .hit { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.found .hit:last-child { border-bottom: 0; }
+.found .hit b { display: block; }
+.found .hit a { display: inline-block; margin: 2px 10px 0 0; font-size: 13px; }
+.found .none { padding: 10px 12px; color: var(--text-3); }

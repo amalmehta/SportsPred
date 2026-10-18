@@ -4,7 +4,7 @@ import os
 from datetime import date, timedelta
 
 from . import config
-from .common import SITE_DATA_DIR, day, now_iso, write_json
+from .common import SITE_DATA_DIR, calibration, day, now_iso, track_record, write_json
 from .tennis_data import fetch_rankings, load_tour
 from .tennis_model import (TennisElo, as_of, as_of_rr, best_of_five, fit_surface_weight, is_group_match,
                            main_draw, rated_matches, rr_groups, score, simulate_draw, simulate_finals,
@@ -121,6 +121,13 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
             if m["status"] in ("scheduled", "live") and m["a"] and m["b"]:
                 upcoming.append({"date": m["date"], "round": name, "a": m["an"], "b": m["bn"],
                                  "p": round(p_match(m["a"], m["b"]), 3), "live": m["status"] == "live"})
+    calls = []  # every finished match in this event, judged against its pre-match prediction
+    for m in finished:
+        if m["id"] in elo.pre and m["w"] is not None:
+            p = win_prob(*elo.pre_rating(m["id"]))
+            p = best_of_five(p) if bo5 else p
+            calls.append(((p >= 0.5) == (m["w"] == 0), (p - (m["w"] == 0)) ** 2))
+
     recent = []
     for m in sorted(finished, key=lambda m: (m["date"] or "", m["id"]), reverse=True)[:12]:
         if m["id"] in elo.pre and m["w"] is not None:
@@ -131,6 +138,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
                            "p": round(p, 3), "called": (p >= 0.5) == (m["w"] == 0)})
 
     top = sorted({p for s in series for p in s}, key=lambda p: -max(s.get(p, 0) for s in series))[:8]
+    top.sort(key=lambda p: (-series[0].get(p, 0), players.get(p, p)))  # colours stay with each player
     t = today_iso[:10]
     if champion:
         status = "finished"
@@ -146,7 +154,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
         "start": ev["start"], "end": ev["end"],
         "slam": is_slam(ev), "surface": surface, "best_of": 5 if bo5 else 3, "updated": now_iso(), "status": status,
         "defending": ev.get("defending"), "champion": players.get(champion) if champion else None,
-        "table": rows, "upcoming": upcoming[:30], "recent": recent,
+        "table": rows, "upcoming": upcoming[:30], "recent": recent, "record": track_record(calls),
         "history": {"dates": series_days,
                     "series": [{"team": players.get(p, p), "p": [round(s.get(p, 0.0), 4) for s in series]} for p in top]},
         "favourite": {"name": fav["player"], "p": fav["p_win"]} if fav else None,
@@ -183,7 +191,10 @@ def build(today_iso):
         model[tour] = {"matches_rated": len(matches), "players": len(elo.ratings), "surface_weight": elo.weight,
                        "matches_by_surface": by_surface,
                        "backtest": score(elo, recent, elo.weight),
-                       "backtest_overall_only": score(elo, recent, 0.0)}
+                       "backtest_overall_only": score(elo, recent, 0.0),
+                       "calibration": calibration(
+                           [pair for m in recent for pr in [win_prob(*elo.pre_rating(m["id"]))]
+                            for pair in ((pr, int(m["w"] == 0)), (1 - pr, int(m["w"] == 1)))])}
         field = None
         if any(is_finals(ev) and not has_groups(ev) for ev in targets):
             try:

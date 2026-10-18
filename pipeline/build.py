@@ -17,6 +17,23 @@ def summary(c):
                                   "start", "end", "favourite", "next_match", "champion", "slam", "surface", "projected", "format", "updated")}
 
 
+def search_index(summaries):
+    """Every team and player on the site, for the home page's search: name -> where they appear."""
+    found = {}
+    for s in summaries:
+        c = read_json(os.path.join(SITE_DATA_DIR, s["sport"], s["id"] + ".json"))
+        if not c:
+            continue
+        key = "p_qualify" if c.get("format") == "qualifying" else "p_win"
+        who = "player" if c["sport"] == "tennis" else "team"
+        for r in c.get("table", []):
+            found.setdefault(r[who], []).append({
+                "id": c["id"], "sport": c["sport"], "name": c["name"], "p": r.get(key, 0.0),
+                "what": "qualify" if key == "p_qualify" else "win", "out": r.get("alive") is False,
+                "status": c.get("status")})
+    return [{"n": n, "in": sorted(v, key=lambda e: -e["p"])} for n, v in sorted(found.items())]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["clubs", "international", "tennis"], action="append")
@@ -57,6 +74,7 @@ def main(argv=None):
     write_json(index_path, {"updated": now_iso(), "date": today_iso, "competitions": list(kept.values())}, compact=False)
     model["updated"] = now_iso()
     write_json(model_path, model, compact=False)
+    write_json(os.path.join(SITE_DATA_DIR, "search.json"), search_index(kept.values()))
     if failed:
         raise SystemExit("failed: %s" % ", ".join(failed))
 

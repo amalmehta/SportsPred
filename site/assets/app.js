@@ -64,8 +64,15 @@ const SP = (() => {
   }
   function date(iso) { return when(iso, false); }
 
+  let offline = false;
   async function json(path) {
-    const r = await fetch(path, { cache: "no-cache" });
+    let r;
+    try { r = await fetch(path, { cache: "no-cache" }); }
+    catch (e) {
+      // no connection: use the last copy this browser (or the Mac app) has, and say so
+      r = await fetch(path, { cache: "force-cache" });
+      offline = true;
+    }
     if (!r.ok) throw new Error(path + " " + r.status);
     return r.json();
   }
@@ -155,11 +162,40 @@ const SP = (() => {
     };
   }
 
+  function parseIso(iso) { return new Date(iso && iso.length === 17 ? iso.replace("Z", ":00Z") : iso); }
+  function ago(iso) {
+    const mins = Math.round((Date.now() - parseIso(iso)) / 60000);
+    if (!(mins >= 0)) return "";
+    if (mins < 2) return "just now";
+    if (mins < 60) return `${mins} minutes ago`;
+    const h = Math.round(mins / 60);
+    return h < 48 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${Math.round(h / 24)} days ago`;
+  }
+  const STALE_HOURS = 6;
+
   function footer(updated) {
     const f = document.getElementById("foot");
     if (!f) return;
-    f.innerHTML = `<div class="wrap">Predictions refresh every 3 hours from public results${updated ? " · last update " + esc(when(updated)) : ""} ·
+    f.innerHTML = `<div class="wrap">Predictions refresh about every hour from public results${updated ? ` · updated <span title="${esc(when(updated))}">${esc(ago(updated))}</span>` : ""} ·
       <a href="how.html">How it works</a> · <a href="${REPO}">Source</a>. For fun and learning, not betting advice.</div>`;
+    // the hourly update can be held up (GitHub delays scheduled runs); say so instead of looking current
+    const hours = (Date.now() - parseIso(updated)) / 3600000;
+    const main = document.querySelector("main");
+    if (offline && main && !document.getElementById("offline")) {
+      const note = document.createElement("div");
+      note.id = "offline";
+      note.className = "notice";
+      note.innerHTML = `<b>You're offline.</b> Showing the predictions as they were ${esc(ago(updated) || "when you last loaded them")}.`;
+      main.prepend(note);
+      return;
+    }
+    if (updated && hours > STALE_HOURS && main && !document.getElementById("stale")) {
+      const note = document.createElement("div");
+      note.id = "stale";
+      note.className = "notice";
+      note.innerHTML = `<b>Last updated ${esc(ago(updated))}.</b> The hourly update is running late, so recent results may not be in yet.`;
+      main.prepend(note);
+    }
   }
 
   return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, json, REPO };

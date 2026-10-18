@@ -24,6 +24,12 @@ python3 -m pipeline.build --only tennis
 
 `--only` accepts `clubs`, `international` or `tennis`, and can be repeated.
 
+Then check the output the way CI does before publishing:
+
+```bash
+python3 -m pipeline.check
+```
+
 ## Look at the site locally
 
 ```bash
@@ -62,14 +68,14 @@ python3 -m unittest discover -s tests
 
 ## Using the site
 
-- **Home page:** one card per competition with the current favourite and their chance to win. Use the chips to show only soccer or only tennis.
-- **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values), every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
+- **Home page:** one card per competition with the current favourite and their chance to win. Use the chips to show only soccer or only tennis, or type in **Find a team or player** to see every competition someone is in and their chances.
+- **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge opens a pre-filled GitHub issue.
 
 ## Hosting (GitHub Pages)
 
-`.github/workflows/update.yml` runs every 3 hours, on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions and publishes `site/` to GitHub Pages. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
+`.github/workflows/update.yml` runs hourly (GitHub sometimes delays scheduled runs), on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions and publishes `site/` to GitHub Pages. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
 
 ## Changing what's covered
 

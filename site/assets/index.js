@@ -57,6 +57,28 @@
     history.replaceState(null, "", sport === "all" ? "index.html" : `index.html?sport=${sport}`);
     render();
   });
+  // find a team or player across every competition
+  const find = document.getElementById("find"), found = document.getElementById("found");
+  let people = null;
+  const fold = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  async function search() {
+    const q = fold(find.value.trim());
+    if (q.length < 2) { found.hidden = true; return; }
+    if (!people) {
+      try { people = (await SP.json("data/search.json")).map(p => Object.assign(p, { key: fold(p.n) })); }
+      catch (e) { people = []; }
+    }
+    const hits = people.filter(p => p.key.includes(q))
+      .sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || a.n.localeCompare(b.n)).slice(0, 12);
+    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.esc(p.n)}</b>${p.in.map(e =>
+      `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)} · ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join("")}</div>`).join("")
+      : `<div class="none">No team or player called “${SP.esc(find.value.trim())}” in the current competitions.</div>`;
+    found.hidden = false;
+  }
+  find.addEventListener("input", search);
+  find.addEventListener("keydown", e => { if (e.key === "Escape") { find.value = ""; found.hidden = true; } });
+  document.addEventListener("click", e => { if (!e.target.closest(".search")) found.hidden = true; });
+
   SP.onChange(render);
   render();
 })();

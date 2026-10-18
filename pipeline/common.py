@@ -65,3 +65,28 @@ def now_iso():
 def day(iso):
     """'2026-10-13T19:00Z' -> '2026-10-13'"""
     return iso[:10]
+
+
+def calibration(pairs, n_bins=10, min_count=20):
+    """Reliability table: of the predictions that said ~p, how often did it happen?
+
+    pairs: (predicted probability, 1 if it happened else 0). Returns one row per 10% band with
+    enough predictions: {"lo", "hi", "p": average prediction, "freq": how often it happened, "n"}.
+    """
+    bins = [[0.0, 0, 0] for _ in range(n_bins)]  # sum of p, hits, count
+    for p, y in pairs:
+        b = bins[min(int(p * n_bins), n_bins - 1)]
+        b[0] += p
+        b[1] += y
+        b[2] += 1
+    return [{"lo": i / float(n_bins), "hi": (i + 1) / float(n_bins), "p": round(s / n, 4),
+             "freq": round(h / float(n), 4), "n": n}
+            for i, (s, h, n) in enumerate(bins) if n >= min_count]
+
+
+def track_record(calls):
+    """calls: list of (called it?, Brier score). Summary shown on each competition page."""
+    if not calls:
+        return None
+    return {"n": len(calls), "called": sum(1 for c, _ in calls if c),
+            "brier": round(sum(b for _, b in calls) / len(calls), 4)}

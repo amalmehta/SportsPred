@@ -1,6 +1,6 @@
 # SportsPred
 
-Live winner predictions for soccer leagues and tennis tournaments, worked out from past results and refreshed every three hours.
+Live winner predictions for soccer leagues and tennis tournaments, worked out from past results and refreshed about every hour.
 
 ![Home page: every competition with its favourite and their chance to win](docs/images/Home%20Page.jpg)
 

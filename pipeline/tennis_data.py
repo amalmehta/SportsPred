@@ -82,13 +82,16 @@ def load_tour(tour, first=None, ahead_days=45, step=3):
             d += timedelta(days=step)
             continue
         try:
-            for ev in fetch_day(tour, d):
+            day_events = fetch_day(tour, d)
+            for ev in day_events:
                 old = events.get(ev["id"])
                 # keep the richer copy (draws grow as the event goes on)
                 if old is None or len(ev["matches"]) >= len(old["matches"]) or ev["end"][:10] >= frozen_before:
                     events[ev["id"]] = ev
             n_fetch += 1
-            if iso < frozen_before:
+            # skip this day in future only once every event on it is finished and frozen on disk;
+            # otherwise an event still in progress could be lost from the cache
+            if iso < frozen_before and all(e["end"] and e["end"][:10] < frozen_before for e in day_events):
                 fetched.add(iso)
         except RuntimeError as err:
             print("  ! %s %s: %s" % (tour, iso, err))

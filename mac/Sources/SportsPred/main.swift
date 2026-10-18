@@ -10,7 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var webView: WKWebView!
     var lastLoad = Date.distantPast
     var titleWatch: NSKeyValueObservation?
-    let refreshAfter: TimeInterval = 15 * 60  // predictions update every 3 hours; refresh when coming back
+    var cacheTried = Set<URL>()  // pages we've already tried to show from cache while offline
+    let refreshAfter: TimeInterval = 15 * 60  // predictions update about hourly; refresh when coming back
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
@@ -74,7 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        lastLoad = Date()
+        if let url = webView.url, !cacheTried.contains(url) {
+            lastLoad = Date()  // a real network load, not a cached copy
+            cacheTried.removeAll()
+        }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -86,7 +90,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func showOffline(_ error: Error) {
-        if (error as NSError).code == NSURLErrorCancelled { return }
+        let err = error as NSError
+        if err.code == NSURLErrorCancelled { return }
+        // offline: show the last copy of this page we have, before giving up
+        let failed = (err.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url ?? siteURL
+        if isSite(failed), !cacheTried.contains(failed) {
+            cacheTried.insert(failed)
+            webView.load(URLRequest(url: failed, cachePolicy: .returnCacheDataDontLoad))
+            return
+        }
         let html = """
         <!doctype html><meta charset="utf-8"><meta name="color-scheme" content="light dark">
         <style>body{font:15px -apple-system;display:grid;place-items:center;height:100vh;margin:0;color:#52514e;background:#f6f6f3}

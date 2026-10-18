@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import numpy as np
 
 from . import config
-from .common import SITE_DATA_DIR, day, now_iso, today, write_json
+from .common import SITE_DATA_DIR, calibration, day, now_iso, today, track_record, write_json
 from .soccer_data import fetch_groups, load_international_results, load_slug
 from .soccer_model import Elo, fit_goals_model, score_predictions
 from .soccer_sim import (Matchups, simulate_groups_ko, simulate_league,
@@ -223,6 +223,14 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         if len(upcoming) >= 30:
             break
 
+    calls = []  # every finished match this season, judged against its pre-match prediction
+    for m in fin:
+        if m["id"] in elo.pre:
+            rh, ra = elo.pre[m["id"]]
+            p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
+            o = outcome(m)
+            calls.append((max(range(3), key=lambda i: p[i]) == o, sum((p[i] - (i == o)) ** 2 for i in range(3))))
+
     recent = []
     for m in sorted(fin, key=lambda m: m["date"], reverse=True)[:12]:
         if m["id"] not in elo.pre:
@@ -240,6 +248,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
     else:
         top = sorted({t for s in series for t in s}, key=lambda t: -max(s.get(t, 0) for s in series))[:8]
         fav = rows[0] if rows else None
+    # chart colours go by series order: order by the first point (fixed all season), not today's rank,
+    # so a team keeps its colour as the race changes
+    top.sort(key=lambda t: (-series[0].get(t, 0), names.get(t, t)))
     finished_all = not todo
     return {
         "id": cfg["slug"], "sport": "soccer", "name": cfg["name"], "group": sport_group,
@@ -250,6 +261,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
                     "series": [{"team": names.get(t, t), "p": [round(s.get(t, 0.0), 4) for s in series]} for t in top]},
         "favourite": {"name": fav["team"], "p": fav[key]} if fav else None,
         "next_match": upcoming[0]["date"] if upcoming else None,
+        "record": track_record(calls),
         "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,
     }
 
@@ -292,7 +304,8 @@ def build_clubs(today_iso):
         payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso)
         comps.append(payload)
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
-             "backtest": score_predictions(rows), "matches_rated": len(finished)}
+             "backtest": score_predictions(rows), "matches_rated": len(finished),
+             "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)])}
     return comps, model
 
 
@@ -382,7 +395,8 @@ def build_international(today_iso):
             p = gm.outcome_probs(rh + (0 if r["neutral"] else hfa) - ra)[:3]
             bt.append((p[0], p[1], p[2], outcome(r)))
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
-             "backtest": score_predictions(bt), "matches_rated": len(rows)}
+             "backtest": score_predictions(bt), "matches_rated": len(rows),
+             "calibration": calibration([(r[i], int(r[3] == i)) for r in bt for i in range(3)])}
     return comps, model
 
 
