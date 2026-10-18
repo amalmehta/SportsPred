@@ -70,6 +70,7 @@ Asked and answered (2026-10-13):
 
 Decided without asking:
 - Rebuilds every 3 hours (not once a day) so it stays "live"; in-match live odds are out of scope.
+- Freshness (asked 2026-10-18): GitHub runs the hourly schedule only every ~4–5 hours on this repo. User chose to keep it as is rather than self-re-triggering runs; the site shows a notice when data is over 6 hours old.
 - Odds over time are rebuilt each run by replaying the season with only what was known each day,
   so charts have full history from day one.
 - Jeff Sackmann's tennis CSVs are gone (404), so tennis history comes from ESPN too, from 2024.
