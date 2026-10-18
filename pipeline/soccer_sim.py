@@ -198,15 +198,28 @@ def champion_counts(champs, teams):
 
 # ---------------------------------------------------------------- formats
 
-def simulate_league(teams, results, fixtures, mu, n, seed):
-    """Domestic league: champion = top of the table."""
+def place_odds(order, teams, top=None, bottom=None):
+    """From simulated finishing orders: P(finish in the top `top`) and P(finish in the bottom `bottom`)."""
+    pos = np.argsort(order, axis=1)  # pos[s, i] = finishing position of team i (0 = first)
+    out = {}
+    if top:
+        out["p_top"] = {t: float((pos[:, i] < top).mean()) for i, t in enumerate(teams)}
+    if bottom:
+        out["p_drop"] = {t: float((pos[:, i] >= len(teams) - bottom).mean()) for i, t in enumerate(teams)}
+    return out
+
+
+def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None):
+    """Domestic league: champion = top of the table; also the chance of a top-`top` or bottom-`bottom` finish."""
     rng = np.random.default_rng(seed)
     order, pts = sim_table(teams, results, fixtures, mu, n, rng)
     p_win = np.bincount(order[:, 0], minlength=len(teams)) / float(n)
-    return {
+    out = {
         "p_win": {t: float(p_win[i]) for i, t in enumerate(teams)},
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(teams)},
     }
+    out.update(place_odds(order, teams, top, bottom))
+    return out
 
 
 def ucl_bracket(ranked):
@@ -251,10 +264,12 @@ def simulate_league_phase_ko(lp_teams, lp_results, lp_fixtures, ko_matches, mu, 
         for s in range(n):
             alive = byes + _resolve_open(decided, open_ties, mu, rng_py)
             champs.append(run_bracket(alive, mu, 4, rng_py))
-    return {
+    out = place_odds(order, lp_teams, top=8)  # top 8 go straight to the round of 16
+    out["p_ko"] = place_odds(order, lp_teams, top=24)["p_top"]  # top 24 reach the knockouts
+    return dict(out, **{
         "p_win": champion_counts(champs, lp_teams),
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(lp_teams)},
-    }
+    })
 
 
 def _bracket_fixed(field, mu, rng_py):

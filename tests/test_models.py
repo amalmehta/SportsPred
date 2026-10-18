@@ -279,6 +279,20 @@ class PublishCheckTests(unittest.TestCase):
                  "table": [{"team": t, "group": g, "p_win": 0.5, "p_qualify": 0.5, "p_playoff": 0.5}
                            for g in ("A", "B") for t in (g + "1", g + "2")]}
         self.assertEqual(problems_in(quals), [])
+        league = dict(good, places={"top": 1}, table=[{"team": "A", "p_win": 0.6, "p_top": 0.6},
+                                                    {"team": "B", "p_win": 0.4, "p_top": 0.2}])
+        self.assertTrue(problems_in(league))  # top-1 chances must add up to 1
+
+    def test_vanished_competitions(self):
+        from datetime import datetime, timezone
+        from pipeline.check import vanished
+        now = datetime(2026, 10, 18, tzinfo=timezone.utc)
+        published = {"competitions": [
+            {"id": "eng.1", "name": "Premier League", "status": "live", "next_match": "2026-10-19T14:00Z"},
+            {"id": "wta-1", "name": "Old Open", "status": "finished", "next_match": "2026-09-01T10:00Z"},
+            {"id": "afc", "name": "Asian Cup", "status": "upcoming", "next_match": "2027-01-07T20:00Z"}]}
+        local = {"competitions": [{"id": "afc"}]}
+        self.assertEqual(vanished(local, published, now), ["Premier League"])
 
 
 class CalibrationTests(unittest.TestCase):

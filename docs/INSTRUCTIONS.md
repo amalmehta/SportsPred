@@ -57,6 +57,7 @@ This builds `mac/build/SportsPred.app`, a universal app for Apple silicon and In
 | ⌘R | Reload (it also refreshes on its own when you come back after 15 minutes) |
 | ⌘+ / ⌘− / ⌘0 | Zoom in / out / actual size |
 | ⇧⌘C | Copy a link to the page you're on |
+| (on launch) | Reopens the page you were last on |
 | ⌥⌘O | Open the page in your browser |
 | File → Share… | Share the page (Messages, Mail, AirDrop…) |
 | Help → Send Feedback… | Opens the feedback panel |
@@ -75,6 +76,10 @@ python3 -m unittest discover -s tests
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
+- **Follow teams:** tap ☆ next to any team or player in a competition's table (or in search results). They appear under **Your teams** at the top of the home page, with their chances everywhere. Saved in this browser.
+- **Add to calendar:** on a competition page, **Add to calendar** downloads its upcoming matches, with the model's chances in each event, as an `.ics` file for Calendar, Outlook or Google Calendar.
+- **Chart legend:** click a team in the legend to hide or show its line.
+- **Search shortcuts:** press / to jump to search, use ↑ ↓ to move through results, Enter to open, Esc to clear.
 - **Home page extras:** "Coming up in the next day or so" lists every match across competitions with the model's pick, and "Biggest moves since yesterday" shows whose odds changed most.
 - **Share:** each competition page has a Share button (the share sheet on phones and Safari, otherwise it copies the link). Shared links show a preview card.
 - **On your phone:** open the site in Safari or Chrome and choose **Add to Home Screen**. It opens like an app and shows the last predictions when you're offline.

@@ -189,6 +189,39 @@ const SP = (() => {
   }
   const STALE_HOURS = 6;
 
+  /* ---------- following teams and players (kept in this browser only) ---------- */
+  const FOLLOW = "sportspred.follow";
+  function following() {
+    try { return new Set(JSON.parse(localStorage.getItem(FOLLOW) || "[]")); } catch (e) { return new Set(); }
+  }
+  function toggleFollow(name) {
+    const f = following();
+    f.has(name) ? f.delete(name) : f.add(name);
+    try { localStorage.setItem(FOLLOW, JSON.stringify([...f])); } catch (e) { /* private mode */ }
+    listeners.forEach(fn => fn(settings));
+    return f.has(name);
+  }
+  function starButton(name) {
+    const on = following().has(name);
+    return `<button class="star${on ? " on" : ""}" type="button" data-follow="${esc(name)}" aria-pressed="${on}"
+      title="${on ? "Stop following" : "Follow"} ${esc(name)}" aria-label="${on ? "Stop following" : "Follow"} ${esc(name)}">${on ? "★" : "☆"}</button>`;
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-follow]");
+    if (!b) return;
+    e.preventDefault();
+    toggleFollow(b.dataset.follow);
+  });
+
+  /* ---------- where a match is now, judged from the clock (data can be a few hours old) ---------- */
+  function matchState(iso, liveFlag, sport) {
+    const mins = (Date.now() - parseIso(iso)) / 60000;
+    const length = sport === "tennis" ? 240 : 150;  // generous match lengths, in minutes
+    if (!(mins >= 0)) return "upcoming";
+    if (mins < length || (liveFlag && mins < length * 1.5)) return "live";
+    return "done";  // probably over; the result arrives with the next update
+  }
+
   function footer(updated) {
     const f = document.getElementById("foot");
     if (!f) return;
@@ -214,5 +247,6 @@ const SP = (() => {
     }
   }
 
-  return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO };
+  return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO,
+    following, toggleFollow, starButton, matchState };
 })();

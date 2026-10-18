@@ -31,7 +31,7 @@
   <h2>1. Rate every team and player</h2>
   <p>Each soccer club, national team and tennis player has an <b>Elo rating</b>: one number that goes up when they win and down when they lose. Beating a stronger opponent earns more than beating a weaker one, so after a few seasons the numbers settle where results put them.</p>
   <ul>
-    <li><b>Club soccer</b> uses every match since 2021 in the big five leagues, the Champions, Europa and Conference Leagues, and five more leagues (Portugal, Netherlands, Scotland, Belgium, Turkey), so clubs from different countries are measured on one scale. Wins by bigger margins count for more, and home teams get a head start that the model fits from the data.</li>
+    <li><b>Club soccer</b> uses every match since 2021 in the big five leagues, the Champions, Europa and Conference Leagues, and five more leagues (Portugal, Netherlands, Scotland, Belgium, Turkey), so clubs from different countries are measured on one scale. Wins by bigger margins count for more, and home teams get a head start that the model fits from the data. When a club beats a club from another league in Europe, its <b>whole league</b> moves up a little (and the other league down): domestic games can't show which league is stronger, but European ones can. That made European match predictions noticeably better.</li>
     <li><b>International soccer</b> uses every international since 1990; World Cup and continental tournament matches count more than friendlies.</li>
     <li><b>Tennis</b> uses every ATP and WTA singles match since 2024. New players' ratings move fast and established players' slowly (the approach FiveThirtyEight popularised). Grand Slam matches count a little more. Each player also has a <b>rating per surface</b> (hard, clay, grass) built only from matches on that surface. A prediction blends the two; the mix is fitted to the last year of results <span id="surface-mix"></span>.</li>
   </ul>
@@ -43,8 +43,8 @@
   <h2>3. Play the rest out 10,000 times</h2>
   <p>To pick a winner the model doesn't just pick the best-rated side. It simulates every remaining match 10,000 times, keeping real results already played:</p>
   <ul>
-    <li><b>Leagues</b> (Premier League, La Liga…): finish the table, break ties on goal difference and goals scored, see who's top.</li>
-    <li><b>Champions and Europa League</b>: finish the 36-team league phase, then the knockout playoffs (9th–24th), round of 16 and onwards, with two-legged ties and a one-off final.</li>
+    <li><b>Leagues</b> (Premier League, La Liga…): finish the table, break ties on goal difference and goals scored, see who's top. The same runs give each team's chance of a top-4 finish (Champions League places; top 3 in France) and of relegation (bottom 3; bottom 2 in Germany and France, where the playoff place isn't counted).</li>
+    <li><b>Champions and Europa League</b>: finish the 36-team league phase, then the knockout playoffs (9th–24th), round of 16 and onwards, with two-legged ties and a one-off final. The table also shows each club's chance of a top-8 finish (straight to the round of 16) and of reaching the knockouts (top 24).</li>
     <li><b>International tournaments</b>: finish the groups, then the knockout bracket.</li>
     <li><b>World Cup qualifying</b>: finish each group table and count how often a team lands in a qualifying place, a playoff place, or top spot, using each confederation's places (for example, in Europe the winner qualifies and the runner-up goes to the playoffs; in South America the top six qualify). These pages appear on their own while qualifiers are being played; 2030 qualifying hadn't been scheduled as of October 2026.</li>
     <li><b>Tennis</b>: play the rest of the draw round by round.</li>

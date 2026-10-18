@@ -12,6 +12,15 @@
   let digest = { matches: [], movers: [] };
   try { digest = await SP.json("data/today.json"); } catch (e) { /* optional */ }
   let allMatches = false;
+  let people = null;
+  const fold = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  async function loadPeople() {
+    if (!people) {
+      try { people = (await SP.json("data/search.json")).map(p => Object.assign(p, { key: fold(p.n) })); }
+      catch (e) { people = []; }
+    }
+    return people;
+  }
 
   const ORDER = { live: 0, upcoming: 1, finished: 2 };
   const GROUP_ORDER = ["european", "domestic", "international", "qualifying", "atp-slam", "wta-slam", "atp-finals", "wta-finals", "atp-1000", "wta-1000"];
@@ -40,22 +49,36 @@
   function link(m) { return `competition.html?sport=${m.sport}&id=${encodeURIComponent(m.id)}`; }
 
   // today's matches everywhere, and whose odds moved most since the day before
+  // teams and players you follow (stars on competition pages), with their chances everywhere
+  function yourTeams() {
+    const follow = SP.following();
+    if (!follow.size) return "";
+    if (!people) { loadPeople().then(render); return ""; }
+    const mine = people.filter(p => follow.has(p.n));
+    if (!mine.length) return "";
+    return `<h2>Your teams</h2><div class="movers">${mine.map(p => `<div class="mover">${SP.starButton(p.n)}
+      <span><b>${SP.esc(p.n)}</b></span><span class="small">${p.in.map(e =>
+        `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)}: ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join(" · ")}</span></div>`).join("")}</div>`;
+  }
+
   function digestHtml() {
     const pick = x => sport === "all" || x.sport === sport;
-    const matches = (digest.matches || []).filter(pick), movers = (digest.movers || []).filter(pick);
+    // hide games that have probably finished since the last update; flag ones under way by the clock
+    const matches = (digest.matches || []).filter(pick).filter(m => SP.matchState(m.date, m.live, m.sport) !== "done");
+    const movers = (digest.movers || []).filter(pick);
     let html = "";
     if (matches.length) {
-      const shown = allMatches ? matches : matches.slice(0, 8);
+      const shown = allMatches ? matches : matches.slice(0, 5);
       html += `<h2>Coming up in the next day or so</h2><div class="matches">${shown.map(m => {
         const tag = SP.tagFor({ id: m.id, group: m.group, sport: m.sport, country: m.country });
         const home = m.home || m.a, away = m.away || m.b;
         const p = Array.isArray(m.p) ? m.p : [m.p, 0, 1 - m.p];
         const call = p[0] >= p[2] ? (p[0] >= p[1] ? home : "Draw") : (p[2] >= p[1] ? away : "Draw");
         const best = Math.max(...p);
-        return `<a class="match today" href="${link(m)}"><div class="when">${SP.esc(SP.when(m.date))}${m.live ? ' <span class="status live">Live</span>' : ""}</div>
+        return `<a class="match today" href="${link(m)}"><div class="when">${SP.esc(SP.when(m.date))}${SP.matchState(m.date, m.live, m.sport) === "live" ? ' <span class="status live">Live</span>' : ""}</div>
           <div class="teams"><span>${SP.esc(home)}</span><span class="muted small">v</span><span>${SP.esc(away)}</span></div>
           <div class="meta">${tag}<span>Pick: <b>${SP.esc(call)}</b> ${SP.prob(best)}</span></div></a>`;
-      }).join("")}</div>${matches.length > 8 ? `<p><button class="chip" id="more-matches">${allMatches ? "Show fewer" : `Show all ${matches.length}`}</button></p>` : ""}`;
+      }).join("")}</div>${matches.length > 5 ? `<p><button class="chip" id="more-matches">${allMatches ? "Show fewer" : `Show all ${matches.length}`}</button></p>` : ""}`;
     }
     if (movers.length) {
       html += `<h2>Biggest moves since yesterday</h2><div class="movers">${movers.map(m => {
@@ -83,7 +106,8 @@
       return `<h2>${title}</h2>` + (items.length ? `<div class="grid">${items.map(card).join("")}</div>`
         : `<div class="empty">Nothing ${s === "tennis" ? "on the ATP/WTA 1000 or Grand Slam calendar" : "in play"} right now.</div>`);
     });
-    sections.innerHTML = digestHtml() + blocks.join("");
+    // your teams, then every competition, then what's on in the next day and who moved
+    sections.innerHTML = yourTeams() + blocks.join("") + digestHtml();
     const more = document.getElementById("more-matches");
     if (more) more.onclick = () => { allMatches = !allMatches; render(); };
   }
@@ -95,26 +119,42 @@
   });
   // find a team or player across every competition
   const find = document.getElementById("find"), found = document.getElementById("found");
-  let people = null;
-  const fold = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  let active = -1;
   async function search() {
     const q = fold(find.value.trim());
+    active = -1;
     if (q.length < 2) { found.hidden = true; return; }
-    if (!people) {
-      try { people = (await SP.json("data/search.json")).map(p => Object.assign(p, { key: fold(p.n) })); }
-      catch (e) { people = []; }
-    }
+    await loadPeople();
     const hits = people.filter(p => p.key.includes(q))
       .sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || a.n.localeCompare(b.n)).slice(0, 12);
-    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.esc(p.n)}</b>${p.in.map(e =>
+    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.esc(p.n)} ${SP.starButton(p.n)}</b>${p.in.map(e =>
       `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)} · ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join("")}</div>`).join("")
       : `<div class="none">No team or player called “${SP.esc(find.value.trim())}” in the current competitions.</div>`;
     found.hidden = false;
   }
   find.addEventListener("input", search);
-  find.addEventListener("keydown", e => { if (e.key === "Escape") { find.value = ""; found.hidden = true; } });
+  // keyboard: arrows move through the results' links, Enter opens one, Escape clears, "/" jumps to search
+  find.addEventListener("keydown", e => {
+    const links = [...found.querySelectorAll(".hit a")];
+    if (e.key === "Escape") { find.value = ""; found.hidden = true; return; }
+    if (found.hidden || !links.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      active = (active + (e.key === "ArrowDown" ? 1 : -1) + links.length) % links.length;
+      links.forEach((a, i) => a.classList.toggle("active", i === active));
+      links[active].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      location.href = links[Math.max(active, 0)].href;
+    }
+  });
+  document.addEventListener("keydown", e => {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); find.focus(); }
+  });
   document.addEventListener("click", e => { if (!e.target.closest(".search")) found.hidden = true; });
 
+  SP.onChange(() => { if (!found.hidden) search(); });  // keep stars in the results in step
   SP.onChange(render);
   render();
 })();

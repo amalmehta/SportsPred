@@ -58,14 +58,43 @@ def make_club_elo(hfa):
     return elo, league_teams
 
 
-def run_club_elo(finished, hfa, snapshot_days=(), collect_from="2022-07-01"):
+# How far a whole league moves when one of its clubs beats (or loses to) a club from another league
+# in Europe. Domestic games can't tell leagues apart, so this is the only way league strength is
+# learned. Backtested Oct 2026: European log loss 0.978 -> 0.955 (latest 2 seasons), 0.993 -> 0.970
+# (2 seasons before), with domestic predictions slightly better too.
+LEAGUE_SHIFT = 16.0
+
+
+def run_club_elo(finished, hfa, snapshot_days=(), collect_from="2022-07-01", league_shift=LEAGUE_SHIFT):
     elo, league_teams = make_club_elo(hfa)
     samples = []
+    league_of, members = {}, {}  # club -> its domestic league, league -> clubs
+
+    def shift_league(league, delta):
+        for team in members.get(league, ()):
+            if team in elo.ratings:
+                elo.ratings[team] += delta
 
     def on_match(m, rh, ra):
         league_teams.setdefault(m["slug"], set()).update((m["home"], m["away"]))
+        gap = rh + (0 if m["neutral"] else hfa) - ra
         if m["date"] >= collect_from:
-            samples.append((rh + (0 if m["neutral"] else hfa) - ra, m["hg"], m["ag"]))
+            samples.append((gap, m["hg"], m["ag"]))
+        if m["slug"].endswith(".1"):  # a domestic league game: remember where each club plays
+            for team in (m["home"], m["away"]):
+                old = league_of.get(team)
+                if old != m["slug"]:
+                    if old:
+                        members[old].discard(team)
+                    league_of[team] = m["slug"]
+                    members.setdefault(m["slug"], set()).add(team)
+        elif league_shift and m["slug"].startswith("uefa."):
+            lh, la = league_of.get(m["home"]), league_of.get(m["away"])
+            if lh and la and lh != la:
+                expected = 1.0 / (1.0 + 10 ** (-gap / 400.0))
+                actual = 1.0 if m["hg"] > m["ag"] else (0.5 if m["hg"] == m["ag"] else 0.0)
+                shift_league(lh, league_shift * (actual - expected))
+                shift_league(la, -league_shift * (actual - expected))
 
     rows = [dict(m, home=m["home_key"], away=m["away_key"]) for m in finished]
     snaps = elo.run(rows, snapshot_days, on_match)
@@ -141,7 +170,8 @@ def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None):
     if fmt == "league":
         teams = sorted({m["home_key"] for m in season_matches} | {m["away_key"] for m in season_matches})
         return simulate_league(teams, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
-                               [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed)
+                               [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed,
+                               top=cfg.get("top"), bottom=cfg.get("drop"))
     if fmt == "qualifying":
         direct, nxt, _ = cfg["_slots"]
         return simulate_qualifying(groups, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
@@ -206,6 +236,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         })
         if qualifying:
             rows[-1].update({"p_qualify": round(now["p_qualify"][t], 4), "p_playoff": round(now["p_playoff"][t], 4)})
+        for k in ("p_top", "p_drop", "p_ko"):  # top-4 / relegation, or UEFA top-8 / knockouts
+            if k in now:
+                rows[-1][k] = round(now[k].get(t, 0.0), 4)
 
     mu = Matchups(elo.ratings, gm, hfa)
     upcoming = []
@@ -262,6 +295,8 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         "favourite": {"name": fav["team"], "p": fav[key]} if fav else None,
         "next_match": upcoming[0]["date"] if upcoming else None,
         "record": track_record(calls),
+        "places": ({"top": cfg.get("top"), "drop": cfg.get("drop")} if cfg["format"] == "league" else
+                   {"top": 8, "ko": 24} if cfg["format"] == "league_phase_ko" else None),
         "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,
     }
 

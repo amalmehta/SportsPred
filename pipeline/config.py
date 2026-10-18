@@ -6,13 +6,19 @@ TENNIS_HISTORY_FROM = "2024-01-01"
 
 # Club competitions we predict. `format`:
 #   league           - double round-robin table; winner = top of the table
+#                      top / drop: Champions League places and direct relegation places (playoffs not counted)
 #   league_phase_ko  - UEFA's 36-team league phase, then knockouts
 SOCCER_COMPETITIONS = [
-    {"slug": "eng.1", "name": "Premier League", "country": "England", "format": "league", "group": "domestic"},
-    {"slug": "esp.1", "name": "La Liga", "country": "Spain", "format": "league", "group": "domestic"},
-    {"slug": "ita.1", "name": "Serie A", "country": "Italy", "format": "league", "group": "domestic"},
-    {"slug": "ger.1", "name": "Bundesliga", "country": "Germany", "format": "league", "group": "domestic"},
-    {"slug": "fra.1", "name": "Ligue 1", "country": "France", "format": "league", "group": "domestic"},
+    {"slug": "eng.1", "name": "Premier League", "country": "England", "format": "league", "group": "domestic",
+     "top": 4, "drop": 3},
+    {"slug": "esp.1", "name": "La Liga", "country": "Spain", "format": "league", "group": "domestic",
+     "top": 4, "drop": 3},
+    {"slug": "ita.1", "name": "Serie A", "country": "Italy", "format": "league", "group": "domestic",
+     "top": 4, "drop": 3},
+    {"slug": "ger.1", "name": "Bundesliga", "country": "Germany", "format": "league", "group": "domestic",
+     "top": 4, "drop": 2},
+    {"slug": "fra.1", "name": "Ligue 1", "country": "France", "format": "league", "group": "domestic",
+     "top": 3, "drop": 2},
     {"slug": "uefa.champions", "name": "Champions League", "country": "Europe", "format": "league_phase_ko", "group": "european"},
     {"slug": "uefa.europa", "name": "Europa League", "country": "Europe", "format": "league_phase_ko", "group": "european"},
 ]

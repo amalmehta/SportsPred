@@ -5,8 +5,10 @@ its last good version instead of showing broken predictions.
 """
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
-from .common import SITE_DATA_DIR, read_json
+from . import config
+from .common import SITE_DATA_DIR, fetch, read_json
 
 TOL = 0.02
 
@@ -18,7 +20,7 @@ def problems_in(c):
     table = c.get("table") or []
     key = "player" if c.get("sport") == "tennis" else "team"
     for r in table:
-        for k in ("p_win", "p_qualify", "p_playoff", "p_sf"):
+        for k in ("p_win", "p_qualify", "p_playoff", "p_sf", "p_top", "p_drop", "p_ko"):
             v = r.get(k)
             if v is not None and not (0.0 <= v <= 1.0):
                 out.append("%s: %s has %s = %s" % (name, r.get(key), k, v))
@@ -37,6 +39,13 @@ def problems_in(c):
             out.append("%s: no teams or players" % name)
         elif abs(total - 1.0) > TOL:
             out.append("%s: title chances add up to %.3f, not 1" % (name, total))
+    places = c.get("places") or {}
+    for key, field in (("top", "p_top"), ("drop", "p_drop"), ("ko", "p_ko")):
+        n = places.get(key)
+        if n and table and any(field in r for r in table):
+            got = sum(r.get(field, 0.0) for r in table)
+            if abs(got - n) > TOL * n:
+                out.append("%s: %s chances add up to %.3f, not %d" % (name, field, got, n))
     for m in c.get("upcoming") or []:
         p = m.get("p")
         if isinstance(p, list) and abs(sum(p) - 1.0) > TOL:
@@ -46,7 +55,23 @@ def problems_in(c):
     return out
 
 
-def check(data_dir=SITE_DATA_DIR):
+def vanished(local_index, published_index, now=None):
+    """Competitions the live site shows as still going that this build has dropped.
+
+    A failed fetch can make a league quietly disappear; finished events are allowed to drop off.
+    """
+    now = now or datetime.now(timezone.utc)
+    recent = (now - timedelta(days=2)).strftime("%Y-%m-%d")
+    have = {c["id"] for c in local_index.get("competitions", [])}
+    gone = []
+    for c in published_index.get("competitions", []):
+        still_on = c.get("status") in ("live", "upcoming") and (c.get("next_match") or "9999")[:10] >= recent
+        if still_on and c["id"] not in have:
+            gone.append(c.get("name") or c["id"])
+    return gone
+
+
+def check(data_dir=SITE_DATA_DIR, compare_live=True):
     index = read_json(os.path.join(data_dir, "index.json"))
     if not index or not index.get("competitions"):
         return ["index.json is missing or lists no competitions"]
@@ -55,6 +80,16 @@ def check(data_dir=SITE_DATA_DIR):
     for sport in ("soccer", "tennis"):
         if sport not in sports:
             out.append("no %s competitions in index.json" % sport)
+    for extra in ("search.json", "today.json", "model.json"):
+        if read_json(os.path.join(data_dir, extra)) is None:
+            out.append("%s is missing" % extra)
+    if compare_live and config.SITE_URL:
+        try:
+            published = fetch(config.SITE_URL + "data/index.json", retries=2)
+        except RuntimeError:
+            published = None  # first publish, or the site is unreachable: nothing to compare with
+        for name in vanished(index, published or {}):
+            out.append("%s is still running on the live site but missing from this build" % name)
     for summary in index["competitions"]:
         c = read_json(os.path.join(data_dir, summary["sport"], summary["id"] + ".json"))
         if c is None:

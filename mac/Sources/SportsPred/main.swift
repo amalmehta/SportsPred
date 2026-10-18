@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.setFrameAutosaveName("SportsPred Main Window")
         window.makeKeyAndOrderFront(nil)
 
-        go(siteURL)
+        go(lastPage ?? siteURL)  // pick up where you left off
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -74,7 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return nil
     }
 
+    let lastPageKey = "SportsPred last page"
+    var lastPage: URL? {
+        guard let s = UserDefaults.standard.string(forKey: lastPageKey), let url = URL(string: s), isSite(url) else { return nil }
+        return url
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let url = shareableURL { UserDefaults.standard.set(url.absoluteString, forKey: lastPageKey) }
         if let url = webView.url, !cacheTried.contains(url) {
             lastLoad = Date()  // a real network load, not a cached copy
             cacheTried.removeAll()

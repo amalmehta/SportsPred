@@ -6,7 +6,7 @@ Live winner predictions for soccer leagues and tennis tournaments, worked out fr
 
 ![Premier League title odds over the season](docs/images/Title%20Odds%20Over%20Time.jpg)
 
-![Upcoming match predictions and recent results against the model's call](docs/images/Match%20Predictions.jpg)
+![Every team's chances: title, top 4 and relegation odds, with stars to follow teams](docs/images/Every%20Team's%20Chances.jpg)
 
 ![The SportsPred Mac app](docs/images/Mac%20App.jpg)
 

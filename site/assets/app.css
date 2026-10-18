@@ -10,6 +10,7 @@
   --text-3: #6b6a65;
   --accent: #2a78d6;
   --link: #256abf;  /* text links: darker than --accent so they pass 4.5:1 */
+  --star: #8f5e00;
   --accent-ink: #ffffff;
   --good: #1e7a3c;
   --bad: #b3261e;
@@ -28,7 +29,7 @@
     color-scheme: dark;
     --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
     --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86;
-    --accent: #3987e5; --link: #3987e5; --good: #4cc36f; --bad: #ff7a70;
+    --accent: #3987e5; --link: #3987e5; --star: #e6ad3a; --good: #4cc36f; --bad: #ff7a70;
     --bar-home: #256abf; --bar-draw: #5d5c57; --bar-away: #b8461a;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
@@ -40,7 +41,7 @@
   color-scheme: dark;
   --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
   --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86;
-  --accent: #3987e5; --link: #3987e5; --good: #4cc36f; --bad: #ff7a70;
+  --accent: #3987e5; --link: #3987e5; --star: #e6ad3a; --good: #4cc36f; --bad: #ff7a70;
   --bar-home: #256abf; --bar-draw: #5d5c57; --bar-away: #b8461a;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
@@ -251,3 +252,13 @@ a.match.today:hover { text-decoration: none; border-color: var(--text-3); }
 .title-row h1 { margin-bottom: 4px; }
 .match.today .teams { justify-content: flex-start; gap: 8px; }
 .match.today .meta { justify-content: space-between; }
+
+/* follow star */
+.star { border: 0; background: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; color: var(--text-3); }
+.star.on { color: var(--star); }
+.star:hover { color: var(--text); }
+.status.done::before { content: "⏱"; }
+.legend button { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.legend button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+.found .hit a.active { background: var(--surface-2); border-radius: 4px; outline: 2px solid var(--accent); }
+.mover .small a { white-space: nowrap; }

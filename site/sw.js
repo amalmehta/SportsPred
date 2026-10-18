@@ -1,6 +1,6 @@
 /* SportsPred offline support: pages and assets come from the cache when there's no connection.
    Data (data/*.json) and pages are network-first, so you always see the latest when online. */
-const VERSION = "sportspred-v1";
+const VERSION = "sportspred-v2";
 const CORE = ["./", "index.html", "competition.html", "how.html", "404.html", "assets/app.css", "assets/app.js",
   "assets/index.js", "assets/competition.js", "assets/icon.svg", "assets/icon-192.png", "manifest.webmanifest"];
 
@@ -29,7 +29,8 @@ self.addEventListener("fetch", e => {
   const sameSite = url.origin === location.origin;
   const fresh = req.mode === "navigate" || (sameSite && (url.pathname.includes("/data/") || /\.(html|js|css)$/.test(url.pathname)));
   if (fresh) {  // network first, keep a copy, fall back to the copy
-    e.respondWith(fetch(req).then(res => {
+    // always check with the server (a cheap "not modified" when nothing changed), never the HTTP cache
+    e.respondWith(fetch(sameSite ? new Request(req.url, { cache: "no-cache", credentials: "same-origin" }) : req).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => fromCache(req)));

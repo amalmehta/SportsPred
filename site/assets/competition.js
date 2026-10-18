@@ -47,7 +47,7 @@
       const groups = rows.some(r => r.group);
       return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th>${groups ? "<th>Group</th>" : ""}<th class="num">W–L</th>
         <th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th class="num">Reach semis</th><th class="num">Win title</th></tr></thead><tbody>
-        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.esc(r.player)}${c.champion === r.player ? " 🏆" : ""}</td>
+        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.esc(r.player)}${c.champion === r.player ? " 🏆" : ""}</td>
           ${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}<td class="num">${SP.esc(r.record || "")}</td>
           <td class="num opt">${r.rating}</td><td class="num">${SP.prob(r.p_sf)}</td>
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
@@ -55,7 +55,7 @@
     }
     if (tennis) {
       return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
-        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.esc(r.player)}</td>
+        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.esc(r.player)}</td>
           <td class="num opt">${r.rating}</td><td>${r.alive ? (c.champion === r.player ? "Champion" : "In") : "Out"}</td>
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
       </tbody></table></div>`;
@@ -73,7 +73,7 @@
         ${rows.map(r => {
           const head = r.group !== last ? `<tr><td colspan="${cols + 1}" style="font-weight:700;padding-top:16px">${SP.esc(r.group || "")}</td></tr>` : "";
           pos = r.group !== last ? 1 : pos + 1; last = r.group;
-          return head + `<tr><td class="muted">${pos}</td><td>${SP.esc(r.team)}</td>
+          return head + `<tr><td class="muted">${pos}</td><td>${SP.starButton(r.team)} ${SP.esc(r.team)}</td>
           <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>
           <td class="num opt">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
           <td class="num">${s.direct ? SP.prob(r.p_qualify) + `<span class="pbar"><i style="width:${r.p_qualify * 100}%"></i></span>` : ""}</td>
@@ -81,12 +81,19 @@
         }).join("")}
       </tbody></table></div>`;
     }
+    const pl = c.places || {};
+    const extra = [
+      pl.top && ["p_top", `Top ${pl.top}`, c.format === "league" ? `Finish in the top ${pl.top} (Champions League places)` : "Finish in the top 8: straight to the round of 16"],
+      pl.ko && ["p_ko", "Knockouts", "Finish in the top 24: reach the knockout rounds"],
+      pl.drop && ["p_drop", "Relegated", `Finish in the bottom ${pl.drop} (direct relegation; playoffs not counted)`],
+    ].filter(Boolean);
     return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th>${groups ? "<th>Group</th>" : ""}
       <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th><th class="num" title="Average final points across simulations">Proj. pts</th>
-      <th class="num opt" title="Elo rating">Rating</th><th class="num">Win title</th></tr></thead><tbody>
-      ${rows.map((r, i) => `<tr><td class="muted">${i + 1}</td><td>${SP.esc(r.team)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
+      <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num" title="${hint}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
+      ${rows.map((r, i) => `<tr><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.esc(r.team)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
         <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>
         <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
+        ${extra.map(([k]) => `<td class="num">${SP.prob(r[k])}</td>`).join("")}
         <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
     </tbody></table></div>`;
   }
@@ -106,10 +113,40 @@
     }).join("");
   }
 
+  function stateBadge(m) {
+    const st = SP.matchState(m.date, m.live, c.sport);
+    if (st === "live") return `<span class="status live">Live</span>`;
+    if (st === "done") return `<span class="status done" title="This page updates about hourly">Result due in the next update</span>`;
+    return "";
+  }
+
+  // download the upcoming matches, with the model's chances, as a calendar file
+  function calendar() {
+    const pad = n => String(n).padStart(2, "0");
+    const stamp = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
+    const text = t => String(t).replace(/[\\;,]/g, x => "\\" + x).replace(/\n/g, "\\n");
+    const now = stamp(new Date());
+    const events = c.upcoming.map((m, i) => {
+      const start = new Date(m.date.length === 17 ? m.date.replace("Z", ":00Z") : m.date);
+      const end = new Date(start.getTime() + (tennis ? 150 : 115) * 60000);
+      const title = tennis ? `${m.a} v ${m.b}` : `${m.home} v ${m.away}`;
+      const odds = tennis ? `${m.a} ${SP.prob(m.p)} · ${m.b} ${SP.prob(1 - m.p)}`
+        : `${m.home} ${SP.prob(m.p[0])} · Draw ${SP.prob(m.p[1])} · ${m.away} ${SP.prob(m.p[2])}`;
+      return ["BEGIN:VEVENT", `UID:${c.id}-${i}-${stamp(start)}@sportspred`, `DTSTAMP:${now}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`,
+        `SUMMARY:${text(title + " · " + c.name)}`, `DESCRIPTION:${text("SportsPred chances: " + odds + "\n" + location.href)}`, `URL:${location.href}`, "END:VEVENT"].join("\r\n");
+    });
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//SportsPred//EN", `X-WR-CALNAME:${text(c.name + " · SportsPred")}`, ...events, "END:VCALENDAR"].join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+    a.download = `${c.name} matches.ics`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   function matchRow(m, past) {
     if (tennis) {
       const pA = m.p, names = `<div class="teams"><span>${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}</span></div>`;
-      const meta = past ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Upset"}</span>` : (m.live ? `<span class="status live">Live</span>` : "");
+      const meta = past ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Upset"}</span>` : stateBadge(m);
       return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}<br>${SP.esc(m.round)}</div>${names}
         <div class="split">${seg(pA, "h", m.a)}${seg(1 - pA, "a", m.b)}</div>
         <div class="meta"><span>${past ? "Pre-match chances" : "Win chances"}</span>${meta}</div></div>`;
@@ -117,7 +154,7 @@
     const score = past ? ` <b>${m.hg}–${m.ag}</b> ` : "";
     const meta = past
       ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Missed"}</span>`
-      : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${m.live ? `<span class="status live">Live</span>` : ""}`;
+      : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${stateBadge(m)}`;
     return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}</div>
       <div class="teams"><span>${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}</span></div>
       <div class="split">${seg(m.p[0], "h", "Home win")}${seg(m.p[1], "d", "Draw")}${seg(m.p[2], "a", "Away win")}</div>
@@ -145,12 +182,14 @@
       <h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>
       <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
       <div class="two">
-        <div><h2>Coming up</h2>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>
+        <div><div class="title-row"><h2>Coming up</h2>${c.upcoming.length ? '<button class="chip" id="ics" type="button" title="Download these matches, with our chances, for your calendar">Add to calendar</button>' : ""}</div>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>
         <div><h2>Recent results vs. our call</h2>${recordLine()}<div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
       </div>`;
     if (canChart && !asTable) drawChart();
     if (canChart && asTable) legendOnly();
     document.getElementById("share").onclick = share;
+    const ics = document.getElementById("ics");
+    if (ics) ics.onclick = calendar;
     const toggle = document.getElementById("as-table");
     if (toggle) toggle.onclick = () => { asTable = !asTable; const y = scrollY; render(); scrollTo(0, y); };
     const more = document.getElementById("more");
@@ -158,6 +197,17 @@
   }
 
   let asTable = false;
+  const hidden = new Set();  // teams switched off in the chart legend
+  document.addEventListener("click", e => {
+    const b = e.target.closest("#legend [data-series]");
+    if (!b || !chart) return;
+    const team = c.history.series[+b.dataset.series].team;
+    hidden.has(team) ? hidden.delete(team) : hidden.add(team);
+    const n = c.history.series.length;
+    chart.data.datasets.forEach((d, i) => { if (i % n === +b.dataset.series) d.hidden = hidden.has(team); });
+    chart.update();
+    b.setAttribute("aria-pressed", String(!hidden.has(team)));
+  });
 
   // share sheet where there is one (phones, Safari), otherwise copy the link
   async function share() {
@@ -226,6 +276,8 @@
         pointRadius: 4, pointHoverRadius: 6, pointStyle: "circle",
       }));
     }
+    const n = h.series.length;
+    datasets.forEach((d, i) => { d.hidden = hidden.has(h.series[i % n].team); });
     if (chart) chart.destroy();
     chart = new Chart(document.getElementById("chart"), {
       type: "line",
@@ -249,7 +301,7 @@
       },
     });
     document.getElementById("legend").innerHTML = h.series.map((s, i) =>
-      `<span><i style="background:${colors[i]}"></i>${SP.esc(s.team)} · ${SP.prob(s.p[s.p.length - 1])}</span>`).join("") +
+      `<button type="button" data-series="${i}" aria-pressed="${!hidden.has(s.team)}" title="Show or hide ${SP.esc(s.team)}"><i style="background:${colors[i]}"></i>${SP.esc(s.team)} · ${SP.prob(s.p[s.p.length - 1])}</button>`).join("") +
       `<span class="muted" style="flex-basis:100%">Lines: replay, using only what was known at the end of each day.${live.length
         ? ` Dots: the odds this site published that day (${live.length} day${live.length > 1 ? "s" : ""} so far, since ${SP.esc(SP.date(live[0].date + "T12:00Z"))}).` : ""}</span>`;
   }
