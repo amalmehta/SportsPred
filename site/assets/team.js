@@ -9,7 +9,13 @@
   SP.header(t.sport);
   document.title = `${t.name} · SportsPred`;
   SP.footer();
-  let chart;
+  let chart, surfaces = null;
+  if (tennis) {  // overall and per-surface ratings, from the compare tool's ratings file
+    try {
+      const R = await SP.json("data/ratings.json");
+      surfaces = ((R.atp || {}).players || {})[t.name] || ((R.wta || {}).players || {})[t.name] || null;
+    } catch (e) { surfaces = null; }
+  }
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   function compRow(e) {
@@ -28,19 +34,55 @@
     if (tennis) {
       const p = home ? m.p : 1 - m.p;
       chances = `win ${SP.prob(p)}`;
-      if (past) { const won = (m.w === 0) === home; result = `<b>${won ? "Won" : "Lost"}</b> · ${won ? (p < 0.25 ? "upset" : p >= 0.5 ? "called it" : "missed") : (1 - p < 0.25 ? "upset" : p < 0.5 ? "called it" : "missed")}`; }
+      if (past) { const won = (m.w === 0) === home; result = `<b>${won ? "Won" : "Lost"}</b> · ${SP.verdict(m, "tennis").text.toLowerCase()}`; }
     } else {
       const [w, d, l] = home ? m.p : [m.p[2], m.p[1], m.p[0]];
       chances = `win ${SP.prob(w)} · draw ${SP.prob(d)} · lose ${SP.prob(l)}`;
       if (past) {
         const gf = home ? m.hg : m.ag, ga = home ? m.ag : m.hg;
-        result = `<b>${gf > ga ? "Won" : gf === ga ? "Drew" : "Lost"} ${gf}–${ga}</b>`;
+        result = `<b>${gf > ga ? "Won" : gf === ga ? "Drew" : "Lost"} ${gf}–${ga}</b> · ${SP.verdict(m, "soccer").text.toLowerCase()}`;
       }
     }
     const comp = `<a href="competition.html?sport=${t.sport}&id=${encodeURIComponent(m.comp_id)}">${SP.esc(m.comp)}</a>`;
     return `<div class="match"><div class="when">${SP.esc(past ? SP.date(m.date) : SP.when(m.date))}${m.round ? "<br>" + SP.esc(m.round) : ""}</div>
       <div class="teams"><span>${tennis ? "v" : home ? "Home v" : "Away at"} ${SP.teamLink(opp, t.sport)}</span>${past ? `<span>${result}</span>` : ""}</div>
       <div class="meta"><span>${comp}</span><span>${past ? "We said: " : ""}${chances}</span></div></div>`;
+  }
+
+  // the team's last five results as W / D / L chips, newest first
+  function form() {
+    const last = t.recent.slice(0, 5);
+    if (!last.length) return "";
+    const chip = m => {
+      let r;
+      if (tennis) r = ((m.w === 0) === (m.a === t.name)) ? "W" : "L";
+      else { const home = m.home === t.name, gf = home ? m.hg : m.ag, ga = home ? m.ag : m.hg; r = gf > ga ? "W" : gf === ga ? "D" : "L"; }
+      const opp = tennis ? (m.a === t.name ? m.b : m.a) : (m.home === t.name ? m.away : m.home);
+      return `<span class="form f-${r}" title="${SP.esc(SP.date(m.date))} v ${SP.esc(opp)}">${r}</span>`;
+    };
+    return `<div class="form-row"><span class="muted small">Form</span>${last.map(chip).join("")}</div>`;
+  }
+
+  // the next game, from this side's point of view
+  function nextUp() {
+    const m = t.upcoming[0];
+    if (!m) return "";
+    const home = tennis ? m.a === t.name : m.home === t.name;
+    const opp = tennis ? (home ? m.b : m.a) : (home ? m.away : m.home);
+    const [w, d, l] = tennis ? [home ? m.p : 1 - m.p, 0, home ? 1 - m.p : m.p] : (home ? m.p : [m.p[2], m.p[1], m.p[0]]);
+    return `<div class="panel next-up"><div class="muted small">Next: ${SP.esc(SP.when(m.date))} · ${SP.esc(m.comp)}</div>
+      <div class="next-teams"><b>${SP.esc(t.name)}</b> <span class="muted">${tennis ? "v" : home ? "v" : "at"}</span> <b>${SP.teamLink(opp, t.sport)}</b></div>
+      <div class="split">${[[w, "h", "Win"], ...(tennis ? [] : [[d, "d", "Draw"]]), [l, "a", tennis ? "Lose" : "Lose"]].map(([v, cls, lab]) =>
+        `<div class="${cls}" style="flex:${v * 100} 1 0" title="${lab}: ${SP.prob(v)}">${v >= 0.12 ? SP.prob(v) : ""}</div>`).join("")}</div>
+      <div class="small muted">${tennis ? `win ${SP.prob(w)}` : `win ${SP.prob(w)} · draw ${SP.prob(d)} · lose ${SP.prob(l)}`}</div></div>`;
+  }
+
+  function surfaceTiles() {
+    if (!surfaces) return "";
+    const [o, h, c, g] = surfaces;
+    const tile = (label, v, cls) => `<div class="stat"><b>${v}</b><span>${cls ? SP.surface(cls) : label}</span></div>`;
+    return `<h2>Ratings by court</h2><div class="stats">${tile("Overall", o)}${tile("", h, "hard")}${tile("", c, "clay")}${tile("", g, "grass")}</div>
+      <p class="small muted">Each court has its own rating from matches on that surface only; predictions blend it with the overall rating.</p>`;
   }
 
   function render() {
@@ -50,9 +92,12 @@
       <p class="small"><a href="index.html?sport=${t.sport}">← All ${tennis ? "tennis" : "soccer"}</a></p>
       <div class="title-row"><h1>${SP.flag(t.flag)}${SP.esc(t.name)} ${SP.starButton(t.name)}</h1></div>
       <p class="sub">${tennis ? "Tennis player" : "Soccer team"}${r.length ? ` · rating <b>${r[r.length - 1][1]}</b>` : ""}</p>
+      ${form()}
+      ${nextUp()}
       <h2>Chances</h2><div class="movers">${t.comps.map(compRow).join("")}</div>
       ${r.length > 2 ? `<h2>Rating over the last year</h2><div class="panel"><div class="chart-box" style="height:240px"><canvas id="rating" role="img" aria-label="Rating over time" aria-describedby="rating-sum"></canvas></div>
         <p class="small chart-sum" id="rating-sum">${SP.esc(SP.date(r[0][0] + "T12:00Z"))}: ${r[0][1]} → now: ${r[r.length - 1][1]} (${change >= 0 ? "+" : ""}${change}). Higher means stronger; the gap between two ratings sets each match's chances.</p></div>` : ""}
+      ${surfaceTiles()}
       <div class="two">
         <div><h2>Next up</h2><div class="matches">${t.upcoming.length ? t.upcoming.map(m => matchRow(m, false)).join("") : '<div class="empty">No scheduled matches.</div>'}</div></div>
         <div><h2>Recent results</h2><div class="matches">${t.recent.length ? t.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No recent results.</div>'}</div></div>

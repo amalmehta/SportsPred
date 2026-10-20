@@ -11,7 +11,9 @@ from datetime import datetime, timedelta, timezone
 import time
 import traceback
 
-from . import live_log, soccer_build, tennis_build
+from xml.sax.saxutils import escape
+
+from . import config, live_log, soccer_build, tennis_build
 from .common import DATA_DIR, SITE_DATA_DIR, now_iso, read_json, today, write_json
 
 HISTORY_DIR = os.path.join(DATA_DIR, "histories")  # rating histories per part (kept between runs, not published)
@@ -131,6 +133,19 @@ def team_pages(summaries, histories, out_dir=None):
     return index
 
 
+def write_sitemap(summaries, pages, site_dir=None):
+    """sitemap.xml: home, How It Works, every competition and every team / player page."""
+    site_dir = site_dir or os.path.dirname(SITE_DATA_DIR)
+    base = config.SITE_URL or ""
+    urls = [base, base + "how.html"]
+    urls += [base + "competition.html?sport=%s&id=%s" % (c["sport"], c["id"]) for c in summaries]
+    urls += [base + "team.html?id=" + fid for fid in sorted(pages.values())]
+    body = "".join("  <url><loc>%s</loc></url>\n" % escape(u) for u in urls)
+    with open(os.path.join(site_dir, "sitemap.xml"), "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n%s</urlset>\n' % body)
+    return len(urls)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["clubs", "international", "tennis"], action="append")
@@ -192,6 +207,7 @@ def main(argv=None):
     histories = {p: read_json(os.path.join(HISTORY_DIR, p + ".json"), {}) for p in ("clubs", "international", "tennis")}
     pages = team_pages(kept.values(), histories)
     write_json(os.path.join(SITE_DATA_DIR, "teams.json"), pages)
+    write_sitemap(kept.values(), pages)
     if failed:
         raise SystemExit("failed: %s" % ", ".join(failed))
 

@@ -252,6 +252,8 @@ def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(teams)},
     }
     out.update(place_odds(order, teams, top, bottom))
+    pos = np.argsort(order, axis=1)  # pos[s, i] = where team i finished in sim s (0 = top)
+    out["positions"] = {t: np.bincount(pos[:, i], minlength=len(teams)) / float(n) for i, t in enumerate(teams)}
     if track:
         out["swings"] = match_swings(res[2], order[:, 0], fixtures, teams, p_win)
     return out

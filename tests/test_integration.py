@@ -250,5 +250,45 @@ class NewFeatureTests(unittest.TestCase):
         self.assertEqual(build.slug("Borussia Mönchengladbach"), "borussia-monchengladbach")
 
 
+class RoundSixTests(unittest.TestCase):
+    def test_seeded_draw_rules_and_projected_odds(self):
+        from pipeline.tennis_model import seeded_draw, simulate_projected
+        ranked = ["S%d" % i for i in range(1, 65)]
+        rng = random.Random(7)
+        for _ in range(100):
+            pos = {p: i for i, p in enumerate(seeded_draw(ranked, 64, rng))}
+            self.assertEqual(len(pos), 64)
+            self.assertNotEqual(pos["S1"] // 32, pos["S2"] // 32)           # 1 and 2 in different halves
+            self.assertEqual(len({pos["S%d" % i] // 16 for i in range(1, 5)}), 4)  # top 4 in different quarters
+            self.assertEqual(len({pos["S%d" % i] // 8 for i in range(1, 17)}), 8)  # top 16 cover all 8 eighths, 2 seeds each
+        ratings = {p: 2300 - 12 * i for i, p in enumerate(ranked)}
+        reach = {}
+        odds = simulate_projected(ranked, ratings, False, 1500, 1, reach=reach)
+        self.assertAlmostEqual(sum(odds.values()), 1.0, places=6)
+        for k, n in (("qf", 8), ("sf", 4), ("f", 2)):
+            self.assertAlmostEqual(sum(reach[k].values()), n, places=6)
+        self.assertEqual(max(odds, key=odds.get), "S1")
+
+    def test_position_grid_rows_are_probabilities(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        g = t.payload()["positions"]
+        self.assertEqual(len(g["teams"]), 6)
+        for row in g["p"]:
+            self.assertAlmostEqual(sum(row), 1.0, places=2)
+        for k in range(6):  # every place is filled by exactly one team in each run
+            self.assertAlmostEqual(sum(row[k] for row in g["p"]), 1.0, places=2)
+
+    def test_sitemap_lists_every_page(self):
+        from pipeline import build
+        with tempfile.TemporaryDirectory() as tmp:
+            n = build.write_sitemap([{"sport": "soccer", "id": "eng.1"}], {"Arsenal|soccer": "soccer-arsenal"}, site_dir=tmp)
+            with open(os.path.join(tmp, "sitemap.xml")) as f:
+                xml = f.read()
+        self.assertEqual(n, 4)
+        self.assertIn("competition.html?sport=soccer&amp;id=eng.1", xml)
+        self.assertIn("team.html?id=soccer-arsenal", xml)
+
+
 if __name__ == "__main__":
     unittest.main()

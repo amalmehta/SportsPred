@@ -289,6 +289,26 @@ const SP = (() => {
       </tbody></table>`;
   }
 
+  /* ---------- one place for how a result is judged (competition and team pages share it) ---------- */
+  const UPSET = 0.25;  // a result we gave less than this is an upset
+  // the chance we gave to what actually happened
+  function happenedProb(m, sport) {
+    if (sport === "tennis") return m.w === 0 ? m.p : 1 - m.p;
+    const o = m.hg > m.ag ? 0 : m.hg === m.ag ? 1 : 2;
+    return m.p[o];
+  }
+  function verdict(m, sport) {
+    const p = happenedProb(m, sport);
+    if (p < UPSET) return { kind: "upset", p, text: "Upset" };
+    return m.called ? { kind: "yes", p, text: "Called it" } : { kind: "no", p, text: "Missed" };
+  }
+  function verdictBadge(m, sport) {
+    const v = verdict(m, sport);
+    return v.kind === "upset" ? `<span class="badge upset" title="We gave this ${prob(v.p)}">Upset · ${prob(v.p)}</span>`
+      : `<span class="called ${v.kind}">${v.text}</span>`;
+  }
+
   return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO,
+    happenedProb, verdict, verdictBadge,
     following, toggleFollow, starButton, matchState, flag, surface, ago, loadTeams, teamLink, scoreGrid, scoreGridHtml, outcomeProbs };
 })();

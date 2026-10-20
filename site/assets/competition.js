@@ -62,9 +62,13 @@
       </tbody></table></div>`;
     }
     if (tennis) {
-      return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
+      const reach = rows.some(r => r.reach) && c.status !== "finished";
+      const rc = [["qf", "Quarters"], ["sf", "Semis"], ["f", "Final"]];
+      return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th>
+        ${reach ? rc.map(([, l]) => `<th class="num" title="Chance to reach the ${l.toLowerCase()}">${l}</th>`).join("") : ""}<th class="num">Win title</th></tr></thead><tbody>
         ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}${SP.following().has(r.player) ? " mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.flag(r.flag)}${SP.teamLink(r.player, c.sport)}</td>
-          <td class="num opt">${r.rating}</td><td>${r.alive ? (c.champion === r.player ? "Champion" : "In") : "Out"}</td>
+          <td class="num opt">${r.rating}</td><td>${c.projected ? "Projected" : r.alive ? (c.champion === r.player ? "Champion" : "In") : "Out"}</td>
+          ${reach ? rc.map(([k]) => `<td class="num">${SP.prob((r.reach || {})[k] || 0)}</td>`).join("") : ""}
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
       </tbody></table></div>`;
     }
@@ -154,18 +158,14 @@
   function matchRow(m, past) {
     if (tennis) {
       const pA = m.p, names = `<div class="teams"><span>${SP.flag(m.af)}${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}${SP.flag(m.bf)}</span></div>`;
-      const happened = past ? (m.w === 0 ? m.p : 1 - m.p) : null;
-      const meta = past ? (happened < 0.25 ? `<span class="badge upset" title="We gave this ${SP.prob(happened)}">Upset · ${SP.prob(happened)}</span>`
-        : `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Missed"}</span>`) : stateBadge(m);
+      const meta = past ? SP.verdictBadge(m, "tennis") : stateBadge(m);
       return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}<br>${SP.esc(m.round)}</div>${names}
         <div class="split">${seg(pA, "h", m.a)}${seg(1 - pA, "a", m.b)}</div>
         <div class="meta"><span>${past ? "Pre-match chances" : "Win chances"}</span>${meta}</div>${past ? "" : tennisWhy(m)}</div>`;
     }
     const score = past ? ` <b>${m.hg}–${m.ag}</b> ` : "";
-    const o = past ? (m.hg > m.ag ? 0 : m.hg === m.ag ? 1 : 2) : null;
     const meta = past
-      ? (m.p[o] < 0.25 ? `<span class="badge upset" title="We gave this result ${SP.prob(m.p[o])}">Upset · ${SP.prob(m.p[o])}</span>`
-        : `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Missed"}</span>`)
+      ? SP.verdictBadge(m, "soccer")
       : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${stateBadge(m)}`;
     return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}</div>
       <div class="teams"><span>${SP.flag(m.hf)}${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}${SP.flag(m.af)}</span></div>
@@ -197,6 +197,36 @@
       <div class="small muted"><a href="how.html">How the model works</a></div></div></details>`;
   }
 
+  // chance of every finishing position, as a heatmap (one hue, light to dark)
+  function positionsHtml() {
+    const g = c.positions;
+    if (!g) return "";
+    const T = g.teams.length, top = Math.max(...g.p.flat());
+    return `<details class="panel fold"><summary><h2>Every finishing position</h2><span class="muted small">How likely each team is to end up 1st, 2nd, 3rd…</span></summary>
+      <div class="table-wrap"><table class="grid-scores positions"><thead><tr><th>Team</th>${g.p[0].map((_, k) => `<th>${k + 1}</th>`).join("")}</tr></thead><tbody>
+      ${g.teams.map((t, i) => `<tr><th class="pos-team">${SP.esc(t)}</th>${g.p[i].map((p, k) =>
+        `<td style="--t:${(p / top).toFixed(3)}" title="${SP.esc(t)}: ${k + 1}${["st", "nd", "rd"][k] || "th"} ${SP.prob(p)}">${p >= 0.01 ? Math.round(p * 100) : ""}</td>`).join("")}</tr>`).join("")}
+      </tbody></table></div><p class="small muted">Numbers are percentages; blank means under 1%.</p></details>`;
+  }
+
+  // download the odds table as a spreadsheet-friendly CSV file
+  function downloadCsv() {
+    const cols = tennis ? [["player", "Player"], ["rating", "Rating"], ["p_win", "Win title"], ["p_sf", "Reach semis"]]
+      : [["team", "Team"], ["group", "Group"], ["played", "Played"], ["pts", "Points"], ["gd", "Goal difference"], ["proj_pts", "Projected points"],
+         ["rating", "Rating"], ["p_top", "Top places"], ["p_ko", "Knockouts"], ["p_drop", "Relegated"], ["p_qualify", "Qualify"], ["p_playoff", "Playoff"], ["p_win", "Win"]];
+    const used = cols.filter(([k]) => c.table.some(r => r[k] != null));
+    const cell = v => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const reach = tennis && c.table.some(r => r.reach);
+    const head = used.map(([, l]) => l).concat(reach ? ["Reach quarters", "Reach semis", "Reach final"] : []);
+    const lines = [head.join(",")].concat(c.table.map(r => used.map(([k]) => cell(r[k]))
+      .concat(reach ? ["qf", "sf", "f"].map(k => cell((r.reach || {})[k])) : []).join(",")));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
+    a.download = `${c.name} odds ${(c.updated || "").slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   // the chart in words: where the leading contenders started and where they are now
   function chartSummary() {
     const h = c.history;
@@ -219,12 +249,12 @@
     if (!w || !w.fixtures.length) return "";
     const next = w.fixtures.slice(0, 10);
     const opt = (k, v, label) => `<button type="button" data-pick="${k}" data-v="${v}" class="${(picks[k] ?? -1) === v ? "on" : ""}">${label}</button>`;
-    return `<h2>What if…?</h2><div class="panel whatif">
+    return `<details class="panel whatif fold"${whatifResult || Object.keys(picks).length ? " open" : ""}><summary><h2>What if…?</h2><span class="muted small">Pick results and replay the season</span></summary>
       <p class="small muted" style="margin-top:0">Pick results for the next games and replay the rest of the season 2,000 times in your browser. Unpicked games are left to the model.</p>
       ${next.map((f, k) => `<div class="wi-row"><span class="wi-teams">${SP.esc(w.teams[f[0]])} v ${SP.esc(w.teams[f[1]])}</span>
         <span class="seg small">${opt(k, -1, "Model")}${opt(k, 0, "Home win")}${opt(k, 1, "Draw")}${opt(k, 2, "Away win")}</span></div>`).join("")}
       <p><button class="btn" id="wi-run" type="button">Play out the season</button> <button class="chip" id="wi-reset" type="button">Reset</button></p>
-      <div id="wi-out" aria-live="polite">${whatifResult || ""}</div></div>`;
+      <div id="wi-out" aria-live="polite">${whatifResult || ""}</div></details>`;
   }
 
   function runWhatif() {
@@ -312,10 +342,11 @@
         <div class="legend" id="legend"></div>
         <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button></div>`
         : `<div class="muted">The chart fills in as results come in${c.projected ? ", starting when the groups are drawn" : ""}.</div>`}</div>
+      <div class="title-row"><h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>${c.table.length ? '<button class="chip" id="csv" type="button" title="Download this table as a CSV file">Download CSV</button>' : ""}</div>
+      <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
       ${swingsHtml()}
       ${whatifHtml()}
-      <h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>
-      <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
+      ${positionsHtml()}
       <div class="two">
         <div><div class="title-row"><h2>Coming up</h2>${c.upcoming.length ? '<button class="chip" id="ics" type="button" title="Download these matches, with our chances, for your calendar">Add to calendar</button>' : ""}</div>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>
         <div><h2>Recent results vs. our call</h2>${recordLine()}<div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
@@ -323,6 +354,8 @@
     if (canChart && !asTable) drawChart();
     if (canChart && asTable) legendOnly();
     document.getElementById("share").onclick = share;
+    const csv = document.getElementById("csv");
+    if (csv) csv.onclick = downloadCsv;
     const ics = document.getElementById("ics");
     if (ics) ics.onclick = calendar;
     const toggle = document.getElementById("as-table");

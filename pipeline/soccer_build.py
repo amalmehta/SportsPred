@@ -209,6 +209,15 @@ def rating_histories(finished, elo, names, today_iso, days):
     return out
 
 
+def position_grid(sim, names):
+    """Chance of each finishing position for every team, best expected finish first (leagues only)."""
+    pos = sim.get("positions")
+    if not pos:
+        return None
+    teams = sorted(pos, key=lambda t: float((pos[t] * np.arange(len(pos[t]))).sum()))
+    return {"teams": [names.get(t, t) for t in teams], "p": [[round(float(x), 3) for x in pos[t]] for t in teams]}
+
+
 def h2h_index(finished):
     """{frozenset(team, team): meetings, newest first} for head-to-head records."""
     out = {}
@@ -362,6 +371,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
                         **{"if": {names.get(k, k): v for k, v in sw["if"].items()}})
                    for sw in now.get("swings", [])],
         "whatif": whatif_data(season_matches, mu, names, cfg) if cfg["format"] == "league" else None,
+        "positions": position_grid(now, names),
         "places": ({"top": cfg.get("top"), "drop": cfg.get("drop")} if cfg["format"] == "league" else
                    {"top": 8, "ko": 24} if cfg["format"] == "league_phase_ko" else None),
         "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,

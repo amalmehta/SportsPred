@@ -77,7 +77,8 @@ python3 -m unittest discover -s tests
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
-- **Team and player pages:** click any name in a table, in search or under Your teams to see their chances everywhere, their rating over the last year, and their next and recent games.
+- **Odds tables:** **Download CSV** saves any competition's table. Tennis tables show the chance of reaching the quarter-finals, semi-finals and final; leagues have **Every finishing position**, a grid of how likely each team is to end up in each place. Before a big tennis event's draw is out, its odds are projected from the rankings.
+- **Team and player pages:** click any name in a table, in search or under Your teams to see their form (last five results), next match with their chances, chances everywhere, their rating over the last year (and, for tennis players, by court), and their next and recent games.
 - **Why these numbers?** Under each upcoming match: both ratings, home advantage, expected goals, a grid of likely scores and the last meetings.
 - **Matches that matter / What if…?** League pages show the games that swing the title race most, and let you pick results for the next games and replay the season in your browser.
 - **Compare any two:** on How It Works, pick two clubs, national teams or players to see the model's chances and likely scores.

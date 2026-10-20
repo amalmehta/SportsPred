@@ -40,6 +40,7 @@ SportsPred/
 │   ├── 404.html               Friendly page for mistyped addresses
 │   ├── manifest.webmanifest   Lets phones add SportsPred to the home screen
 │   ├── sw.js                  Offline support (network first, cached copy when offline)
+│   ├── sitemap.xml            Every page, written by the build (not committed)
 │   ├── assets/app.css         All styles, light and dark themes
 │   ├── assets/app.js          Shared: header, settings (⌘,), feedback tab, tags, formatting
 │   ├── assets/index.js        Home page logic

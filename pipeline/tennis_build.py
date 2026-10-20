@@ -10,6 +10,7 @@ from . import flags, live_log
 from .tennis_data import FAILED_DAYS, fetch_rankings, load_tour
 from .tennis_model import (TennisElo, as_of, as_of_rr, best_of_five, fit_surface_weight, is_group_match,
                            main_draw, rated_matches, rr_groups, score, simulate_draw, simulate_finals,
+                           simulate_projected,
                            surface_of, win_prob)
 
 
@@ -26,6 +27,11 @@ def is_covered(ev, tour):
 
 def is_finals(ev):
     return any(k.lower() in (ev["name"] or "").lower() for k in config.TENNIS_FINALS)
+
+
+def has_draw(ev):
+    """True once ESPN lists real players in the main draw (empty slots don't count)."""
+    return any(m["a"] or m["b"] for _, ms in main_draw(ev) for m in ms)
 
 
 def has_groups(ev):
@@ -51,6 +57,10 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
     finals = is_finals(ev)
     projected = None
     if finals and not has_groups(ev) and projected_field:
+        projected_field = projected_field[:8]  # the season finale: the top 8
+        projected = [p for p, _ in projected_field]
+    elif not finals and not has_draw(ev) and projected_field:
+        projected_field = projected_field[:64]  # a big event before its draw: the top 64, seeded
         projected = [p for p, _ in projected_field]
     bo5 = tour == "atp" and is_slam(ev)
     surface = surface_of(ev["name"], config.TENNIS_SURFACES)
@@ -77,12 +87,14 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
         champion = f["a"] if f["w"] == 0 else f["b"]
 
     seed = seed_for(ev["id"], today_iso[:10])
-    p_sf = {}
+    p_sf, reach = {}, {}
     if finals:
         flat = [m for _, ms in rounds for m in ms]
         now, p_sf = simulate_finals(flat, ratings, config.SIMS_TODAY, seed, projected) if (flat or projected) else ({}, {})
+    elif projected:
+        now = simulate_projected(projected, ratings, bo5, config.SIMS_TODAY // 2, seed, size=64, reach=reach)
     else:
-        now = simulate_draw(rounds, ratings, bo5, config.SIMS_TODAY, seed) if rounds else {}
+        now = simulate_draw(rounds, ratings, bo5, config.SIMS_TODAY, seed, reach=reach) if rounds else {}
 
     series_days, series = [], []
     if rounds and not projected:
@@ -123,6 +135,8 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
     for p in players:
         row = {"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)), "flag": flag.get(p),
                "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost}
+        if reach:
+            row["reach"] = {k: round(reach[k].get(p, 0.0), 4) for k in ("qf", "sf", "f") if reach.get(k)}
         if finals:
             row.update({"p_sf": round(p_sf.get(p, 0.0), 4), "group": group_of.get(p),
                         "record": "%d–%d" % tuple(record.get(p, [0, 0]))})
@@ -283,9 +297,9 @@ def build(today_iso):
         pair_index = h2h_index(matches)
         event_names = {e["id"]: e["name"] for e in events}
         field = None
-        if any(is_finals(ev) and not has_groups(ev) for ev in targets):
+        if any((is_finals(ev) and not has_groups(ev)) or not has_draw(ev) for ev in targets):
             try:
-                field = fetch_rankings(tour, 8)
+                field = fetch_rankings(tour, 64)
             except RuntimeError as err:
                 print("  ! %s rankings: %s" % (tour, err))
         for ev in targets:

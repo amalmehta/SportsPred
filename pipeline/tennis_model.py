@@ -205,8 +205,23 @@ def as_of(event, d):
     return out
 
 
-def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None):
+REACH_ROUNDS = {"quarter": "qf", "semi": "sf", "final": "f"}  # round name contains -> short key
+
+
+def reach_key(name):
+    n = (name or "").lower()
+    if n == "final" or n.endswith(" final") and not n.startswith("qual"):
+        return "f"
+    for k, v in REACH_ROUNDS.items():
+        if n.startswith(k):
+            return v
+    return None
+
+
+def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reach=None):
     """Monte Carlo over the remaining draw. Returns {player id: P(title)}.
+
+    Pass a dict as `reach` to also get {"qf"|"sf"|"f": {player id: P(reach that round)}}.
 
     ESPN doesn't publish bracket positions, so known players are linked to the match they came
     from; open slots (TBD) take winners of unlinked matches from the round before, drawn at random.
@@ -243,6 +258,8 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None):
         feeds.append([m["id"] for m in prev if m["id"] not in linked])
 
     wins = defaultdict(int)
+    reached = {k: defaultdict(int) for k in ("qf", "sf", "f")}
+    keys = [reach_key(name) for name, _ in rounds]
     for s in range(n):
         winner = {}
         orphans = []
@@ -256,6 +273,10 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None):
                     a = orphans.pop() if orphans else ("Q", m["id"], 0)
                 if b is None:
                     b = orphans.pop() if orphans else ("Q", m["id"], 1)
+                if keys[r] and reach is not None:
+                    for p in (a, b):
+                        if not isinstance(p, tuple):
+                            reached[keys[r]][p] += 1
                 if m["status"] in ("final", "retired", "walkover") and m["w"] is not None:
                     winner[m["id"]] = a if m["w"] == 0 else b
                 else:
@@ -264,6 +285,61 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None):
         champ = winner[final[0]["id"]] if final else None
         if champ is not None and not isinstance(champ, tuple):
             wins[champ] += 1
+    if reach is not None:
+        reach.update({k: {p: c / float(n) for p, c in v.items()} for k, v in reached.items()})
+    return {p: c / float(n) for p, c in wins.items()}
+
+
+def seeded_draw(ranked, size, rng):
+    """A random draw that follows seeding rules: 1 and 2 at opposite ends, 3-4 in the other quarters,
+    5-8 one per quarter, 9-16 one per eighth; everyone else anywhere. Returns slots in bracket order."""
+    slots = [None] * size
+    q, e = size // 4, size // 8
+    def place(players, starts):
+        rng.shuffle(starts)
+        for p, at in zip(players, starts):
+            slots[at] = p
+    place(ranked[:1], [0])                      # 1: top of the draw
+    place(ranked[1:2], [size - 1])              # 2: bottom, so 1 and 2 can only meet in the final
+    place(ranked[2:4], [2 * q - 1, 2 * q])      # 3 and 4: one in each half, in the quarters without 1 or 2
+    place(ranked[4:8], [q - 1, q, 3 * q - 1, 3 * q])  # 5-8: one per quarter, at the end away from its top seed
+    place(ranked[8:16], [i * e + (e - 1 if i % 2 == 0 else 0) for i in range(8)])  # 9-16: one per eighth
+    rest = [p for p in ranked[16:size]]
+    open_ = [i for i in range(size) if slots[i] is None]
+    rng.shuffle(rest)
+    for i, p in zip(open_, rest):
+        slots[i] = p
+    return slots
+
+
+def simulate_projected(ranked, ratings, best_of_5, n, seed, size=64, reach=None):
+    """Title odds before the draw is out: a fresh seeded draw of the top `size` players in every run."""
+    rng = random.Random(seed)
+    ranked = ranked[:size]
+    if len(ranked) < 8:
+        return {}
+    size = 1 << (len(ranked).bit_length() - 1)  # largest power of two that fits
+    ranked = ranked[:size]
+    default = sorted(ratings.values())[len(ratings) // 5] if ratings else 1500.0
+    cache = {}
+    def beats(a, b):
+        if (a, b) not in cache:
+            p = win_prob(ratings.get(a, default), ratings.get(b, default))
+            cache[(a, b)] = best_of_five(p) if best_of_5 else p
+        return rng.random() < cache[(a, b)]
+    wins = defaultdict(int)
+    reached = {k: defaultdict(int) for k in ("qf", "sf", "f")}
+    for _ in range(n):
+        field = seeded_draw(ranked, size, rng)
+        while len(field) > 1:
+            k = {8: "qf", 4: "sf", 2: "f"}.get(len(field))
+            if k:
+                for p in field:
+                    reached[k][p] += 1
+            field = [a if beats(a, b) else b for a, b in zip(field[::2], field[1::2])]
+        wins[field[0]] += 1
+    if reach is not None:
+        reach.update({k: {p: c / float(n) for p, c in v.items()} for k, v in reached.items()})
     return {p: c / float(n) for p, c in wins.items()}
 
 
