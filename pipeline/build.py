@@ -15,7 +15,7 @@ from .common import SITE_DATA_DIR, now_iso, read_json, today, write_json
 
 def summary(c):
     return {k: c.get(k) for k in ("id", "sport", "name", "group", "status", "season", "tour", "country",
-                                  "start", "end", "favourite", "next_match", "champion", "slam", "surface", "projected", "format", "updated")}
+                                  "start", "end", "favourite", "next_match", "champion", "slam", "surface", "projected", "format", "stale", "updated")}
 
 
 def search_index(summaries):

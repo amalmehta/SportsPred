@@ -16,6 +16,14 @@
   const statusText = { live: "Live", upcoming: "Upcoming", finished: "Finished" }[c.status];
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+  function sinceYesterday(name) {
+    const live = (c.live || []).filter(e => e.p);
+    if (live.length < 2 || !name) return "";
+    const a = live[live.length - 2].p[name] || 0, b = live[live.length - 1].p[name] || 0, d = b - a;
+    if (Math.abs(d) < 0.005) return `<div class="delta">no change since yesterday</div>`;
+    return `<div class="delta">${d > 0 ? "▲" : "▼"} ${Math.abs(Math.round(d * 100)) || "<1"} pts since yesterday</div>`;
+  }
+
   function hero() {
     if (c.status === "finished" && (c.champion || c.favourite)) {
       return `<div class="hero"><div><div class="muted small">Champion</div><div class="big">🏆 ${SP.esc(c.champion || c.favourite.name)}</div></div></div>`;
@@ -23,13 +31,13 @@
     const note = c.projected ? `<div class="panel" style="margin-bottom:16px"><b>Projected field.</b> <span class="muted">The groups aren't drawn yet, so these odds use the current top 8 in the rankings and simulate the draw (seeds 1 and 2 apart). The real field is the top 8 in the year-to-date Race and can differ by a name or two. Odds switch to the real groups as soon as they're published.</span></div>` : "";
     if (c.favourite && c.status !== "finished" && note) {
       return note + `<div class="hero"><div><div class="muted small">${qualifying ? "Likeliest to qualify" : "Favourite"}</div><div class="big">${SP.esc(c.favourite.name)}</div></div>
-      <div class="lab"><div class="big">${SP.prob(c.favourite.p)}</div>chance to win the title</div></div>`;
+      <div class="lab"><div class="big">${SP.prob(c.favourite.p)}</div>chance to win the title${sinceYesterday(c.favourite.name)}</div></div>`;
     }
     if (!c.favourite) {
       return `<div class="panel"><b>The draw isn't out yet.</b> <span class="muted">Odds appear as soon as ESPN publishes the main draw${c.defending ? ` · defending champion: ${SP.esc(c.defending)}` : ""}.</span></div>`;
     }
     return `<div class="hero"><div><div class="muted small">${qualifying ? "Likeliest to qualify" : "Favourite"}</div><div class="big">${SP.esc(c.favourite.name)}</div></div>
-      <div class="lab"><div class="big">${SP.prob(c.favourite.p)}</div>chance to ${qualifying ? "qualify" : "win"}${tennis ? " the title" : ""}</div></div>`;
+      <div class="lab"><div class="big">${SP.prob(c.favourite.p)}</div>chance to ${qualifying ? "qualify" : "win"}${tennis ? " the title" : ""}${sinceYesterday(c.favourite.name)}</div></div>`;
   }
 
   let showAll = false;
@@ -47,7 +55,7 @@
       const groups = rows.some(r => r.group);
       return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th>${groups ? "<th>Group</th>" : ""}<th class="num">W–L</th>
         <th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th class="num">Reach semis</th><th class="num">Win title</th></tr></thead><tbody>
-        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.esc(r.player)}${c.champion === r.player ? " 🏆" : ""}</td>
+        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}${SP.following().has(r.player) ? " mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.flag(r.flag)}${SP.esc(r.player)}${c.champion === r.player ? " 🏆" : ""}</td>
           ${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}<td class="num">${SP.esc(r.record || "")}</td>
           <td class="num opt">${r.rating}</td><td class="num">${SP.prob(r.p_sf)}</td>
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
@@ -55,7 +63,7 @@
     }
     if (tennis) {
       return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th class="num opt" title="Blend of overall and ${SP.esc(c.surface || "")}-court Elo">Rating</th><th>Status</th><th class="num">Win title</th></tr></thead><tbody>
-        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.esc(r.player)}</td>
+        ${rows.map((r, i) => `<tr class="${r.alive ? "" : "out"}${SP.following().has(r.player) ? " mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.player)} ${SP.flag(r.flag)}${SP.esc(r.player)}</td>
           <td class="num opt">${r.rating}</td><td>${r.alive ? (c.champion === r.player ? "Champion" : "In") : "Out"}</td>
           <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
       </tbody></table></div>`;
@@ -73,7 +81,7 @@
         ${rows.map(r => {
           const head = r.group !== last ? `<tr><td colspan="${cols + 1}" style="font-weight:700;padding-top:16px">${SP.esc(r.group || "")}</td></tr>` : "";
           pos = r.group !== last ? 1 : pos + 1; last = r.group;
-          return head + `<tr><td class="muted">${pos}</td><td>${SP.starButton(r.team)} ${SP.esc(r.team)}</td>
+          return head + `<tr><td class="muted">${pos}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.esc(r.team)}</td>
           <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>
           <td class="num opt">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
           <td class="num">${s.direct ? SP.prob(r.p_qualify) + `<span class="pbar"><i style="width:${r.p_qualify * 100}%"></i></span>` : ""}</td>
@@ -90,7 +98,7 @@
     return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th>${groups ? "<th>Group</th>" : ""}
       <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th><th class="num" title="Average final points across simulations">Proj. pts</th>
       <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num" title="${hint}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
-      ${rows.map((r, i) => `<tr><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.esc(r.team)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
+      ${rows.map((r, i) => `<tr class="${SP.following().has(r.team) ? "mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.esc(r.team)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
         <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>
         <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
         ${extra.map(([k]) => `<td class="num">${SP.prob(r[k])}</td>`).join("")}
@@ -100,7 +108,7 @@
 
   function seg(p, cls, label) {
     const w = Math.max(p * 100, 0);
-    return `<div class="${cls}" style="flex:${w} 1 0" title="${label}: ${SP.prob(p)}">${w >= 12 ? SP.prob(p) : ""}</div>`;
+    return `<div class="${cls}" style="flex:${w} 1 0" title="${SP.esc(label)}: ${SP.prob(p)}">${w >= 12 ? SP.prob(p) : ""}</div>`;
   }
 
   // upcoming matches under one heading per day, so each card only needs the kick-off time
@@ -145,7 +153,7 @@
 
   function matchRow(m, past) {
     if (tennis) {
-      const pA = m.p, names = `<div class="teams"><span>${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}</span></div>`;
+      const pA = m.p, names = `<div class="teams"><span>${SP.flag(m.af)}${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}${SP.flag(m.bf)}</span></div>`;
       const meta = past ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Upset"}</span>` : stateBadge(m);
       return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}<br>${SP.esc(m.round)}</div>${names}
         <div class="split">${seg(pA, "h", m.a)}${seg(1 - pA, "a", m.b)}</div>
@@ -156,22 +164,22 @@
       ? `<span class="called ${m.called ? "yes" : "no"}">${m.called ? "Called it" : "Missed"}</span>`
       : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${stateBadge(m)}`;
     return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}</div>
-      <div class="teams"><span>${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}</span></div>
+      <div class="teams"><span>${SP.flag(m.hf)}${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}${SP.flag(m.af)}</span></div>
       <div class="split">${seg(m.p[0], "h", "Home win")}${seg(m.p[1], "d", "Draw")}${seg(m.p[2], "a", "Away win")}</div>
       <div class="meta">${past ? "<span>Pre-match: home · draw · away</span>" : ""}${meta}</div></div>`;
   }
 
   function render() {
-    const court = c.surface ? `${c.surface[0].toUpperCase()}${c.surface.slice(1)} court · ` : "";
     const fmt = c.format === "finals" ? "two groups of four, top two reach the semi-finals · " : "";
-    const sub = tennis ? `${SP.date(c.start)} – ${SP.date(c.end)} · ${fmt}${court}best of ${c.best_of} sets` : `${c.season} season`;
+    const sub = tennis ? `${SP.esc(SP.date(c.start))} – ${SP.esc(SP.date(c.end))} · ${fmt}best of ${c.best_of} sets` : `${SP.esc(c.season)} season`;
     const h = c.history;
     const canChart = h && h.series.length && (h.dates.length > 1 || (c.live || []).length > 1);
     page.innerHTML = `
       <p class="small"><a href="index.html?sport=${sport}">← All ${tennis ? "tennis" : "soccer"}</a></p>
       <div class="card-head" style="justify-content:flex-start;margin-bottom:6px">${SP.tagFor(c)}<span class="status ${c.status}">${statusText}</span></div>
       <div class="title-row"><h1>${SP.esc(c.name)}</h1><button class="chip" id="share" type="button">Share</button></div>
-      <p class="sub">${SP.esc(sub)}</p>
+      <p class="sub">${tennis ? SP.surface(c.surface) + " " : ""}${sub} <span class="updated" title="${SP.esc(SP.when(c.updated))}">· updated ${SP.esc(SP.ago(c.updated))}</span></p>
+      ${c.stale ? `<div class="notice"><b>Not refreshed in the latest update.</b> ${SP.esc(c.stale_reason || "The data source didn't answer")}, so these are the last good predictions, from ${SP.esc(SP.when(c.updated))}.</div>` : ""}
       ${hero()}
       <h2>${tennis ? "Title odds over the tournament" : qualifying ? "Chance to qualify over the campaign: the races that moved most" : "Title odds over the season"}</h2>
       <div class="panel">${canChart ? `<div class="chart-box" ${asTable ? 'hidden' : ""}><canvas id="chart" aria-label="Chance to win over time"></canvas></div>
@@ -267,7 +275,9 @@
     const at = (ds, vs) => { const m = new Map(ds.map((d, i) => [d, vs[i]])); return dates.map(d => m.has(d) ? m.get(d) * 100 : null); };
     const datasets = h.series.map((s, i) => ({
       label: s.team, data: at(h.dates, s.p), borderColor: colors[i], backgroundColor: colors[i], spanGaps: true,
-      borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: surface, pointHoverBorderWidth: 2, tension: 0.25,
+      borderWidth: 2, pointHoverRadius: 5, pointHoverBorderColor: surface, pointHoverBorderWidth: 2, tension: 0.25,
+      pointRadius: ctx => (ctx.dataIndex === dates.length - 1 ? 4 : 0),  // mark today's value
+      pointBorderColor: surface, pointBorderWidth: 2,
     }));
     if (live.length) {
       h.series.forEach((s, i) => datasets.push({
@@ -288,6 +298,8 @@
         plugins: {
           legend: { display: false },
           tooltip: {
+            backgroundColor: css("--surface"), titleColor: css("--text"), bodyColor: css("--text-2"),
+            borderColor: css("--border"), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
             filter: item => item.parsed.y != null,
             itemSort: (a, b) => b.parsed.y - a.parsed.y,
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${SP.prob(ctx.parsed.y / 100)}` },

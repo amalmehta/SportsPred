@@ -35,6 +35,9 @@ def parse_event(e, tour):
                 continue
             ids = [x.get("id") for x in comp]
             names = [(x.get("athlete") or {}).get("displayName") or "TBD" for x in comp]
+            # country code from the flag image name, e.g. .../countries/500/ser.png -> "ser"
+            codes = [((((x.get("athlete") or {}).get("flag") or {}).get("href") or "").rsplit("/", 1)[-1].split(".")[0] or None)
+                     for x in comp]
             known = [i if i and not str(i).startswith("-") and n != "TBD" else None for i, n in zip(ids, names)]
             w = None
             if comp[0].get("winner"):
@@ -46,6 +49,7 @@ def parse_event(e, tour):
                 "date": c.get("date") or e.get("date"), "status": _status((c.get("status") or {}).get("type") or {}),
                 "a": known[0], "an": names[0] if known[0] else "TBD",
                 "b": known[1], "bn": names[1] if known[1] else "TBD", "w": w,
+                "ac": codes[0] if known[0] else None, "bc": codes[1] if known[1] else None,
             })
     prev = [p.get("displayName") for p in e.get("previousWinners", [])
             if (p.get("type") or {}).get("slug") == SINGLES[tour]]
@@ -56,6 +60,9 @@ def parse_event(e, tour):
 def fetch_day(tour, d):
     data = fetch("%s/site/v2/sports/tennis/%s/scoreboard?dates=%s" % (ESPN, tour, d.strftime("%Y%m%d")))
     return [parse_event(e, tour) for e in data.get("events", [])]
+
+
+FAILED_DAYS = set()  # (tour, day) queries that failed in this run
 
 
 def load_tour(tour, first=None, ahead_days=45, step=3):
@@ -95,6 +102,7 @@ def load_tour(tour, first=None, ahead_days=45, step=3):
                 fetched.add(iso)
         except RuntimeError as err:
             print("  ! %s %s: %s" % (tour, iso, err))
+            FAILED_DAYS.add((tour, iso))
         d += timedelta(days=step)
     for ev in events.values():
         if ev["end"] and ev["end"][:10] < frozen_before:

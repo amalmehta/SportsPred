@@ -86,7 +86,7 @@ python3 -m unittest discover -s tests
 
 ## Hosting (GitHub Pages)
 
-`.github/workflows/update.yml` runs hourly (GitHub sometimes delays scheduled runs), on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions and publishes `site/` to GitHub Pages. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
+`.github/workflows/update.yml` runs hourly (GitHub sometimes delays scheduled runs), on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions, checks them (`pipeline.check`), adds content hashes to the CSS/JS links (`pipeline.stamp`) and publishes `site/` to GitHub Pages. If one competition's data can't be fetched, that competition keeps its last good predictions (marked "Not refreshed") and everything else still updates. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
 
 ## Changing what's covered
 

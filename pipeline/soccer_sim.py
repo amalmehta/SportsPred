@@ -222,68 +222,147 @@ def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None
     return out
 
 
-def ucl_bracket(ranked):
-    """UEFA format after the 36-team league phase (ranked best first).
+# ---------------------------------------------------------------- UEFA league-phase knockouts
 
-    9-24 play off (9 v 24, 10 v 23 ...); the playoff winners meet 1-8 (1 v winner of 16/17 ...);
-    the round of 16 then runs as a fixed bracket. Returns the playoff ties and the order of R16 ties.
+def ko_round(stage):
+    """ESPN stage slug -> knockout round: po, r16, qf, sf, f (None if not a knockout round)."""
+    st = stage or ""
+    if "playoff" in st:
+        return "po"
+    if "16" in st:
+        return "r16"
+    if "quarter" in st:
+        return "qf"
+    if "semi" in st:
+        return "sf"
+    if st.strip("-") in ("final", "finals"):
+        return "f"
+    return None
+
+
+def real_ties(ko_matches):
+    """{round: {frozenset(a, b): (a, remaining legs, a's aggregate lead, winner or None)}} from ESPN."""
+    by_round = {}
+    for m in sorted(ko_matches, key=lambda m: m["date"]):
+        rnd = ko_round(m["stage"])
+        if rnd and not _is_placeholder(m):
+            by_round.setdefault(rnd, {}).setdefault(frozenset((m["home_key"], m["away_key"])), []).append(m)
+    out = {}
+    for rnd, ties in by_round.items():
+        for pair, legs in ties.items():
+            a = legs[0]["home_key"]
+            agg, remaining = 0, []
+            for m in legs:
+                if m["status"] == "final":
+                    agg += (1 if m["home_key"] == a else -1) * (m["hg"] - m["ag"])
+                else:
+                    remaining.append((m["home_key"], m["away_key"], m["neutral"]))
+            winner = None
+            if not remaining:
+                if agg:
+                    winner = a if agg > 0 else next(iter(pair - {a}))
+                else:  # level: decided on penalties, which ESPN flags on the last leg
+                    last = legs[-1]
+                    winner = last["home_key"] if last.get("winner") == "home" else last["away_key"]
+            out.setdefault(rnd, {})[pair] = (a, tuple(remaining), agg, winner)
+    return out
+
+
+# league-phase positions that meet in the playoffs (seeded pair v unseeded pair), and which seeds
+# (1..8) the winners of each pool face in the round of 16
+PLAYOFF_POOLS = [((15, 16), (17, 18), (1, 2)), ((13, 14), (19, 20), (3, 4)),
+                 ((11, 12), (21, 22), (5, 6)), ((9, 10), (23, 24), (7, 8))]
+R16_ORDER = [1, 8, 4, 5, 2, 7, 3, 6]  # bracket order of the seeds' ties: 1 and 2 only meet in the final
+
+
+def uefa_knockout(ranked, ties, mu, rng_py):
+    """One run of the UEFA knockout from a final league-phase order (best first). Returns the champion.
+
+    Follows the 2024- format: 9-24 play off in seeded pools, the winners meet 1-8, and the bracket is
+    fixed from the round of 16. Real ties (pairings and results) from ESPN override the simulated draw.
     """
-    playoffs = [(ranked[r - 1], ranked[33 - r - 1]) for r in range(9, 17)]  # (9,24) ... (16,17)
-    # seed s (1..8) meets the playoff tie that contains rank 17 - s
-    r16_seeds = [1, 8, 4, 5, 2, 7, 3, 6]  # bracket order so 1 and 2 can only meet in the final
-    return playoffs, r16_seeds
+    pos = {t: i + 1 for i, t in enumerate(ranked)}
+
+    def play(rnd, a, b):
+        real = ties.get(rnd, {}).get(frozenset((a, b)))
+        if real:
+            a0, remaining, agg, winner = real
+            if winner:
+                return winner
+            p = mu.tie_prob(a0, next(iter({a, b} - {a0})), remaining, agg)
+            return a0 if rng_py.random() < p else next(iter({a, b} - {a0}))
+        if rnd == "f":
+            legs = ((a, b, True),)
+        else:  # better-placed side at home in the second leg
+            hi, lo = (a, b) if pos.get(a, 99) < pos.get(b, 99) else (b, a)
+            legs = ((lo, hi, False), (hi, lo, False))
+        return a if rng_py.random() < mu.tie_prob(a, b, legs) else b
+
+    def real_partner(rnd, team):
+        for pair in ties.get(rnd, {}):
+            if team in pair:
+                return next(iter(pair - {team}))
+        return None
+
+    # playoffs, pool by pool; then each pool's two winners meet that pool's two seeds
+    seed_opponent = {}
+    for seeded, unseeded, seeds in PLAYOFF_POOLS:
+        tops = [ranked[i - 1] for i in seeded]
+        bottoms = [ranked[i - 1] for i in unseeded]
+        rng_py.shuffle(bottoms)
+        pairs = []
+        for t in tops:
+            partner = real_partner("po", t)
+            if partner in bottoms:
+                bottoms.remove(partner)
+            else:
+                partner = bottoms.pop()
+            pairs.append((t, partner))
+        winners = [play("po", a, b) for a, b in pairs]
+        seed_teams = [ranked[i - 1] for i in seeds]
+        rng_py.shuffle(winners)
+        for st in seed_teams:
+            partner = real_partner("r16", st)
+            w = partner if partner in winners else winners[-1]
+            winners.remove(w)
+            seed_opponent[st] = w
+    field = []
+    for sd in R16_ORDER:
+        st = ranked[sd - 1]
+        field.extend([st, seed_opponent[st]])
+    # fixed bracket from here; a real pairing for a later round wins if ESPN has one
+    for rnd in ("r16", "qf", "sf", "f"):
+        nxt = []
+        for i in range(0, len(field), 2):
+            a, b = field[i], field[i + 1]
+            real_b = real_partner(rnd, a)
+            if real_b and real_b != b and real_b in field[i + 2:]:
+                j = field.index(real_b, i + 2)  # ESPN's draw differs from our bracket: follow ESPN
+                field[j], field[i + 1] = field[i + 1], field[j]
+                b = real_b
+            nxt.append(play(rnd, a, b))
+        field = nxt
+    return field[0]
 
 
 def simulate_league_phase_ko(lp_teams, lp_results, lp_fixtures, ko_matches, mu, n, seed):
     rng = np.random.default_rng(seed)
     rng_py = random.Random(seed)
     order, pts = sim_table(lp_teams, lp_results, lp_fixtures, mu, n, rng)
-    state = knockout_state(ko_matches) if ko_matches else None
+    ties = real_ties(ko_matches or [])
     champs = []
-    if state is None:
-        for s in range(n):
-            ranked = [lp_teams[i] for i in order[s]]
-            if len(ranked) < 24:
-                champs.append(run_bracket(ranked[:8], mu, 4, rng_py))
-                continue
-            playoffs, seeds = ucl_bracket(ranked)
-            po_winner = {}
-            for a, b in playoffs:
-                legs = ((b, a, False), (a, b, False))  # higher seed at home second
-                po_winner[ranked.index(a) + 1] = a if rng_py.random() < mu.tie_prob(a, b, legs) else b
-            r16 = []
-            for sd in seeds:
-                opp = po_winner[17 - sd]
-                r16.extend([ranked[sd - 1], opp])
-            champs.append(_bracket_fixed(r16, mu, rng_py))
-    else:
-        stage, decided, open_ties = state
-        byes = []
-        if "playoff" in stage:  # the top 8 skipped the playoff round
-            byes = [lp_teams[i] for i in order[0][:8]]
-        for s in range(n):
-            alive = byes + _resolve_open(decided, open_ties, mu, rng_py)
-            champs.append(run_bracket(alive, mu, 4, rng_py))
+    for s in range(n):
+        ranked = [lp_teams[i] for i in order[s]]
+        if len(ranked) < 24:  # not the 36-team format: plain bracket of the top 8
+            champs.append(run_bracket(ranked[:8], mu, 4, rng_py))
+        else:
+            champs.append(uefa_knockout(ranked, ties, mu, rng_py))
     out = place_odds(order, lp_teams, top=8)  # top 8 go straight to the round of 16
     out["p_ko"] = place_odds(order, lp_teams, top=24)["p_top"]  # top 24 reach the knockouts
     return dict(out, **{
         "p_win": champion_counts(champs, lp_teams),
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(lp_teams)},
     })
-
-
-def _bracket_fixed(field, mu, rng_py):
-    """Field is in bracket order: pairs (0,1), (2,3)... and winners keep their slots."""
-    alive = list(field)
-    while len(alive) > 1:
-        nxt = []
-        two_legs = len(alive) > 2
-        for i in range(0, len(alive), 2):
-            a, b = alive[i], alive[i + 1]
-            legs = ((a, b, False), (b, a, False)) if two_legs else ((a, b, True),)
-            nxt.append(a if rng_py.random() < mu.tie_prob(a, b, legs) else b)
-        alive = nxt
-    return alive[0]
 
 
 def simulate_groups_ko(groups, results, fixtures, ko_matches, mu, n, seed, advance_top=2, two_leg_min=999):

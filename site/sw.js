@@ -1,8 +1,8 @@
 /* SportsPred offline support: pages and assets come from the cache when there's no connection.
    Data (data/*.json) and pages are network-first, so you always see the latest when online. */
-const VERSION = "sportspred-v2";
+const VERSION = "sportspred-v3";
 const CORE = ["./", "index.html", "competition.html", "how.html", "404.html", "assets/app.css", "assets/app.js",
-  "assets/index.js", "assets/competition.js", "assets/icon.svg", "assets/icon-192.png", "manifest.webmanifest"];
+  "assets/index.js", "assets/competition.js", "assets/how.js", "assets/notfound.js", "assets/icon.svg", "assets/icon-192.png", "manifest.webmanifest"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

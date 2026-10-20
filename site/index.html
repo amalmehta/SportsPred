@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>SportsPred</title>
 <meta name="description" content="Live winner predictions for soccer and tennis, from historical results.">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
@@ -27,12 +28,13 @@
 <main class="wrap">
   <h1 id="title">Who's going to win?</h1>
   <p class="sub">Live title odds for soccer leagues and tennis tournaments, worked out from past results and updated about every hour.</p>
+  <p class="summary" id="summary" aria-live="polite"></p>
   <div class="search">
     <input id="find" type="search" placeholder="Find a team or player…  (press /)" aria-label="Find a team or player" autocomplete="off">
     <div id="found" class="found" hidden></div>
   </div>
   <div class="filters" id="filters"></div>
-  <div id="sections"></div>
+  <div id="sections"><div class="grid" aria-hidden="true"><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div></div></div>
 </main>
 <footer id="foot"></footer>
 <script src="assets/app.js"></script>

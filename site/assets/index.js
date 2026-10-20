@@ -5,6 +5,7 @@
   SP.header(params.get("sport") || "");
   const filters = document.getElementById("filters");
   const sections = document.getElementById("sections");
+  const summary = document.getElementById("summary");
   let index;
   try { index = await SP.json("data/index.json"); }
   catch (e) { sections.innerHTML = `<div class="empty">No predictions yet. Run <code>python3 -m pipeline.build</code> first.</div>`; return; }
@@ -28,7 +29,7 @@
   function card(c) {
     const href = `competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}`;
     const sub = c.sport === "tennis"
-      ? `${SP.date(c.start)} – ${SP.date(c.end)}${c.surface ? " · " + SP.esc(c.surface) : ""}`
+      ? `${SP.esc(SP.date(c.start))} – ${SP.esc(SP.date(c.end))} ${SP.surface(c.surface)}`
       : `${SP.esc(c.season || "")}`;
     let body;
     if (c.status === "finished" && (c.champion || c.favourite)) {
@@ -39,11 +40,12 @@
     } else {
       body = `<div class="muted small">Odds appear once the draw is out.</div>`;
     }
+    const stale = c.stale ? `<div class="muted small">⚠︎ Not refreshed in the latest update</div>` : "";
     const next = c.status !== "finished" && c.next_match ? `<div class="muted small">Next: ${SP.esc(SP.when(c.next_match))}</div>` : "";
     return `<a class="card" href="${href}">
       <div class="card-head">${SP.tagFor(c)}<span class="status ${c.status}">${c.status === "live" ? "Live" : c.status === "upcoming" ? "Upcoming" : "Finished"}</span></div>
       <div><h3>${SP.esc(c.name)}</h3><div class="muted small">${sub}</div></div>
-      ${body}${next}</a>`;
+      ${body}${next}${stale}</a>`;
   }
 
   function link(m) { return `competition.html?sport=${m.sport}&id=${encodeURIComponent(m.id)}`; }
@@ -107,6 +109,9 @@
         : `<div class="empty">Nothing ${s === "tennis" ? "on the ATP/WTA 1000 or Grand Slam calendar" : "in play"} right now.</div>`);
     });
     // your teams, then every competition, then what's on in the next day and who moved
+    const live = index.competitions.filter(c => c.status === "live").length;
+    const soon = (digest.matches || []).filter(m => SP.matchState(m.date, m.live, m.sport) !== "done").length;
+    summary.innerHTML = `<b>${live}</b> competitions live · <b>${soon}</b> matches in the next day or so · updated ${SP.esc(SP.ago(index.updated))}`;
     sections.innerHTML = yourTeams() + blocks.join("") + digestHtml();
     const more = document.getElementById("more-matches");
     if (more) more.onclick = () => { allMatches = !allMatches; render(); };

@@ -34,6 +34,27 @@ def previous(c):
     return found
 
 
+def previous_file(sport, comp_id):
+    """The last good copy of a competition: the newer of the local file and the live site's."""
+    rel = "%s/%s.json" % (sport, comp_id)
+    found = [read_json(os.path.join(SITE_DATA_DIR, rel))]
+    if config.SITE_URL:
+        try:
+            found.append(fetch(config.SITE_URL + "data/" + rel, retries=1))
+        except RuntimeError:
+            pass
+    found = [f for f in found if f]
+    return max(found, key=lambda f: f.get("updated", "")) if found else None
+
+
+def stale_copy(sport, comp_id, reason):
+    """Last good copy, marked as not refreshed this run (None if there isn't one)."""
+    old = previous_file(sport, comp_id)
+    if old:
+        old = dict(old, stale=True, stale_reason=reason)
+    return old
+
+
 def merge(entries, season):
     """One entry per date (the latest wins), only from the current season, oldest first."""
     by_date = {}
@@ -50,6 +71,8 @@ def attach(comps, today_iso, use_previous=True):
     if os.environ.get("SPORTSPRED_TODAY"):
         return comps
     for c in comps:
+        if c.get("stale"):
+            continue  # not refreshed this run: don't log yesterday's odds as today's
         season = c.get("season") or c.get("start", "")[:4]
         entry = {"date": today_iso[:10], "t": now_iso(), "season": season, "p": headline(c)}
         c["live"] = merge((previous(c) if use_previous else []) + [entry], season)

@@ -262,3 +262,41 @@ a.match.today:hover { text-decoration: none; border-color: var(--text-3); }
 .legend button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
 .found .hit a.active { background: var(--surface-2); border-radius: 4px; outline: 2px solid var(--accent); }
 .mover .small a { white-space: nowrap; }
+
+/* ---------- polish ---------- */
+.flag { margin-right: 6px; font-size: 1.05em; }
+.surface { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 9px 1px 7px;
+  background: var(--surface-2); color: var(--text-2); vertical-align: 1px; }
+.surface i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.surface.s-clay i { background: #b8461a; } .surface.s-grass i { background: #2e8b3e; } .surface.s-hard i { background: #256abf; }
+.delta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.updated { color: var(--text-3); font-size: 13px; }
+.summary { color: var(--text-2); margin: -8px 0 16px; font-size: 14px; }
+.summary:empty { display: none; }
+
+/* live pill with a gentle pulse */
+.status.live { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-radius: 999px; padding: 1px 8px 1px 6px; }
+.status.live::before { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+
+/* cards and rows */
+.card, .match, .mover, .chip, .icon-btn { transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background-color .15s ease; }
+a.card:hover, a.mover:hover, a.match.today:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(0,0,0,.08); }
+tbody tr { transition: background-color .12s ease; }
+tbody tr:hover td { background: var(--surface-2); }
+tr.mine td { background: color-mix(in srgb, var(--star) 10%, transparent); }
+tr.mine td:first-child { box-shadow: inset 3px 0 0 var(--star); }
+
+/* loading placeholders */
+.skeleton { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface) 37%, var(--surface-2) 63%); background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite; border-radius: 10px; border-color: transparent; }
+.card.skeleton { height: 168px; box-shadow: none; }
+.skeleton.line { height: 14px; margin: 10px 0; } .skeleton.line.big { height: 34px; margin: 14px 0; }
+.skeleton.block { height: 320px; margin-top: 24px; } .skeleton.block.short { height: 180px; margin-top: 16px; }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+  a.card:hover, a.mover:hover, a.match.today:hover { transform: none; }
+}
+tr.mine td.muted, tbody tr:hover td.muted { color: var(--text-2); }  /* keep 4.5:1 on tinted rows */

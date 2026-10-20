@@ -247,6 +247,13 @@ const SP = (() => {
     }
   }
 
+  function flag(f) { return f ? `<span class="flag" aria-hidden="true">${esc(f)}</span>` : ""; }
+  // court surface as a chip: clay, grass and hard each in their own colour
+  function surface(s) {
+    if (!s) return "";
+    return `<span class="surface s-${esc(s)}"><i aria-hidden="true"></i>${esc(s[0].toUpperCase() + s.slice(1))}</span>`;
+  }
+
   return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO,
-    following, toggleFollow, starButton, matchState };
+    following, toggleFollow, starButton, matchState, flag, surface, ago };
 })();

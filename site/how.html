@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>How It Works · SportsPred</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
@@ -68,6 +69,11 @@
     <details style="margin-top:10px"><summary class="small">Show as a table</summary><div id="calib-table"></div></details></div>
   <p class="small muted" id="calib-note"></p>
 
+  <h3>Did the favourites win?</h3>
+  <p>The match numbers above grade single games. This grades the headline: for every finished season and tournament we cover, the title odds are rebuilt as they stood the day before it started, using only what was known then, and set against who actually won.</p>
+  <div class="stats" id="titles"></div>
+  <details><summary class="small">Every season and tournament</summary><div id="titles-table"></div></details>
+
   <h2>6. Where the data comes from</h2>
   <ul>
     <li>Fixtures, results and tennis draws: ESPN's public scoreboard feeds.</li>
@@ -78,7 +84,7 @@
   <ul>
     <li>Injuries, suspensions, rotation, transfers and managers: only results go in.</li>
     <li>Tennis surfaces come from a list of tournament names (ESPN doesn't publish them); unlisted events count as hard court, and indoor and outdoor hard courts are treated alike.</li>
-    <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockout draws are approximated by seeding.</li>
+    <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockouts follow the real format (seeded playoff pools, a fixed bracket from the round of 16, real ties and results once they're drawn); only pairings not yet drawn are random within their pool.</li>
     <li>Points deductions and soccer head-to-head tie-breakers aren't modelled. At the tennis Finals, three-way ties are split at random rather than by sets and games won.</li>
     <li>World Cup qualifying places follow the 2026 cycle until FIFA confirms 2030's, and "best runners-up" rules (Africa, North &amp; Central America) are simplified to "every runner-up".</li>
     <li>The projected Finals field uses the 52-week rankings because ESPN doesn't publish the Race; withdrawals and alternates only show up once the real draw does.</li>
@@ -87,77 +93,6 @@
 </main>
 <footer id="foot"></footer>
 <script src="assets/app.js"></script>
-<script>
-(async () => {
-  SP.header("how");
-  const box = document.getElementById("stats");
-  try {
-    const m = await SP.json("data/model.json");
-    SP.footer(m.updated);
-    const items = [];
-    const add = (label, b) => { if (b && b.n) items.push(`<div class="stat"><b>${Math.round(b.accuracy * 100)}%</b><span>${label} called · ${b.n.toLocaleString()} matches · Brier ${b.brier.toFixed(3)}</span></div>`); };
-    add("Club soccer", m.soccer_clubs && m.soccer_clubs.backtest);
-    add("International soccer", m.soccer_international && m.soccer_international.backtest);
-    add("ATP tennis", m.tennis && m.tennis.atp && m.tennis.atp.backtest);
-    add("WTA tennis", m.tennis && m.tennis.wta && m.tennis.wta.backtest);
-    box.innerHTML = items.join("") || '<div class="muted">Run the build to see accuracy.</div>';
-    calibrationChart(m);
-    const t = m.tennis || {};
-    if (t.atp && t.wta && t.atp.surface_weight != null) {
-      const pc = w => Math.round(w * 100) + "%";
-      const gain = x => x.backtest_overall_only ? ` (${(x.backtest_overall_only.accuracy * 100).toFixed(1)}% → ${(x.backtest.accuracy * 100).toFixed(1)}% called)` : "";
-      document.getElementById("surface-mix").textContent =
-        `(currently ${pc(t.atp.surface_weight)} surface for men${gain(t.atp)} and ${pc(t.wta.surface_weight)} for women${gain(t.wta)})`;
-    }
-  } catch (e) { box.innerHTML = '<div class="muted">Run the build to see accuracy.</div>'; SP.footer(); }
-})();
-function calibrationChart(m) {
-  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const t = m.tennis || {};
-  const series = [
-    ["Club soccer", m.soccer_clubs && m.soccer_clubs.calibration],
-    ["International soccer", m.soccer_international && m.soccer_international.calibration],
-    ["ATP tennis", t.atp && t.atp.calibration],
-    ["WTA tennis", t.wta && t.wta.calibration],
-  ].filter(([, rows]) => rows && rows.length);
-  if (!series.length || !window.Chart) { document.getElementById("calib").closest(".panel").hidden = true; return; }
-  const colors = [1, 2, 3, 4].map(i => css(`--s${i}`)), text2 = css("--text-2"), border = css("--border"), surface = css("--surface");
-  const pct = v => Math.round(v * 100) + "%";
-  new Chart(document.getElementById("calib"), {
-    type: "line",
-    data: { datasets: [
-      { label: "Spot on", data: [{ x: 0, y: 0 }, { x: 100, y: 100 }], borderColor: css("--text-3"), borderDash: [5, 5],
-        borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0 },
-      ...series.map(([label, rows], i) => ({
-        label, data: rows.map(r => ({ x: r.p * 100, y: r.freq * 100, n: r.n })), borderColor: colors[i], backgroundColor: colors[i],
-        borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, pointBorderColor: surface, pointBorderWidth: 2,
-      })),
-    ] },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      parsing: false,
-      plugins: { legend: { display: false },
-        tooltip: { filter: it => it.datasetIndex > 0, callbacks: {
-          label: ctx => ` ${ctx.dataset.label}: said ${pct(ctx.raw.x / 100)}, happened ${pct(ctx.raw.y / 100)} (${ctx.raw.n.toLocaleString()} predictions)` } } },
-      scales: {
-        x: { type: "linear", min: 0, max: 100, title: { display: true, text: "What the model said", color: text2 },
-             grid: { color: border }, ticks: { color: text2, stepSize: 20, callback: v => v + "%" } },
-        y: { min: 0, max: 100, title: { display: true, text: "How often it happened", color: text2 },
-             grid: { color: border }, ticks: { color: text2, stepSize: 20, callback: v => v + "%" } },
-      },
-    },
-  });
-  document.getElementById("calib-legend").innerHTML = series.map(([label], i) =>
-    `<span><i style="background:${colors[i]}"></i>${label}</span>`).join("") + `<span><i style="background:${css("--text-3")}"></i>Spot on</span>`;
-  document.getElementById("calib-table").innerHTML = `<div class="table-wrap"><table><thead><tr><th>Band</th>${series.map(([l]) => `<th class="num">${l}</th>`).join("")}</tr></thead><tbody>
-    ${Array.from({ length: 10 }, (_, b) => `<tr><td>${b * 10}–${b * 10 + 10}%</td>${series.map(([, rows]) => {
-      const r = rows.find(r => Math.round(r.lo * 10) === b);
-      return `<td class="num">${r ? `${pct(r.freq)} <span class="muted">of ${r.n.toLocaleString()}</span>` : "–"}</td>`;
-    }).join("")}</tr>`).join("")}</tbody></table></div>`;
-  const atp = t.atp && t.atp.calibration, top = atp && atp[atp.length - 1];
-  if (top && top.lo >= 0.9) document.getElementById("calib-note").textContent =
-    `Tennis runs a little hot at the extremes: ATP players given ${pct(top.p)} won ${pct(top.freq)} of the time. Softening those numbers was tested, but it didn't help on both tours when checked on unseen matches, so the model is left as it is and the gap is shown here instead.`;
-}
-</script>
+<script src="assets/how.js"></script>
 </body>
 </html>

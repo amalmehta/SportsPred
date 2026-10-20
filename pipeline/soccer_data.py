@@ -63,6 +63,9 @@ def fetch_year(slug, year):
     return out
 
 
+FAILED = set()  # (slug, year) fetches that failed in this run
+
+
 def load_slug(slug, first_year, last_year):
     """All matches for a competition. Finished calendar years are cached on disk; recent years are refetched."""
     matches = []
@@ -77,7 +80,9 @@ def load_slug(slug, first_year, last_year):
             got = fetch_year(slug, y)
         except RuntimeError as err:
             print("  ! %s %d: %s" % (slug, y, err))
-            got = cached or []
+            FAILED.add((slug, y))
+            matches.extend(cached or [])
+            continue  # never cache a failed fetch, or the year would stay empty for good
         if y < this_year:
             write_json(path, got)
         matches.extend(got)

@@ -10,6 +10,9 @@ SportsPred/
 ├── pipeline/                  Python: data → ratings → simulations → site/data
 │   ├── build.py               Entry point (python3 -m pipeline.build); writes index.json, model.json and search.json
 │   ├── check.py               Sanity checks before publishing (python3 -m pipeline.check)
+│   ├── stamp.py               Adds content hashes to CSS/JS links before deploy (cache-busting)
+│   ├── title_backtest.py      Grades past pre-season / pre-tournament title odds against champions
+│   ├── flags.py               Flag emoji from ESPN country codes and national-team names
 │   ├── config.py              Competitions covered (incl. World Cup qualifying), tennis surfaces by name, history range, simulation counts, name aliases
 │   ├── common.py              HTTP fetching, JSON files, dates
 │   ├── soccer_data.py         ESPN soccer results and fixtures, group tables, international archive
@@ -21,7 +24,8 @@ SportsPred/
 │   ├── tennis_build.py        Tournament predictions and replays
 │   └── live_log.py            Each day's published odds, kept alongside the replay
 ├── tests/
-│   └── test_models.py         Unit tests for models and simulators (no network)
+│   ├── test_models.py         Unit tests for models and simulators (no network)
+│   └── test_integration.py    Whole-pipeline tests on synthetic data (no network)
 ├── data/                      Cached history (finished years and events), reused between runs
 │   ├── soccer/<league>/<year>.json
 │   ├── soccer/international_results.csv
@@ -37,6 +41,8 @@ SportsPred/
 │   ├── assets/app.js          Shared: header, settings (⌘,), feedback tab, tags, formatting
 │   ├── assets/index.js        Home page logic
 │   ├── assets/competition.js  Competition page logic and chart
+│   ├── assets/how.js          How It Works: accuracy, calibration chart, title-odds record
+│   ├── assets/notfound.js     404 page
 │   ├── assets/icon.svg        Favicon
 │   ├── assets/icon-*.png      Home-screen icons (180, 192, 512)
 │   ├── assets/og.png / og.svg Link-preview image and its source

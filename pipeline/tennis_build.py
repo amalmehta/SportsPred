@@ -5,7 +5,9 @@ from datetime import date, timedelta
 
 from . import config
 from .common import SITE_DATA_DIR, calibration, day, now_iso, track_record, write_json
-from .tennis_data import fetch_rankings, load_tour
+from . import title_backtest as tb
+from . import flags, live_log
+from .tennis_data import FAILED_DAYS, fetch_rankings, load_tour
 from .tennis_model import (TennisElo, as_of, as_of_rr, best_of_five, fit_surface_weight, is_group_match,
                            main_draw, rated_matches, rr_groups, score, simulate_draw, simulate_finals,
                            surface_of, win_prob)
@@ -51,6 +53,12 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
                     players[m[slot]] = m[slot + "n"]
     if projected:
         players.update(dict(projected_field))
+    flag = {}  # player id -> flag emoji
+    for _, ms in rounds:
+        for m in ms:
+            for slot in ("a", "b"):
+                if m[slot] and m.get(slot + "c"):
+                    flag[m[slot]] = flags.for_code(m[slot + "c"])
     finished = [m for _, ms in rounds for m in ms if m["status"] in ("final", "retired", "walkover")]
     final_round = rounds[-1][1] if rounds else []
     champion = None
@@ -103,7 +111,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
                 record.setdefault(l, [0, 0])[1] += 1
     rows = []
     for p in players:
-        row = {"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)),
+        row = {"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)), "flag": flag.get(p),
                "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost}
         if finals:
             row.update({"p_sf": round(p_sf.get(p, 0.0), 4), "group": group_of.get(p),
@@ -120,6 +128,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
         for m in sorted(ms, key=lambda m: m["date"] or ""):
             if m["status"] in ("scheduled", "live") and m["a"] and m["b"]:
                 upcoming.append({"date": m["date"], "round": name, "a": m["an"], "b": m["bn"],
+                                 "af": flag.get(m["a"]), "bf": flag.get(m["b"]),
                                  "p": round(p_match(m["a"], m["b"]), 3), "live": m["status"] == "live"})
     calls = []  # every finished match in this event, judged against its pre-match prediction
     for m in finished:
@@ -135,6 +144,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
             p = win_prob(ra, rb)
             p = best_of_five(p) if bo5 else p
             recent.append({"date": m["date"], "round": m["round"], "a": m["an"], "b": m["bn"], "w": m["w"],
+                           "af": flag.get(m["a"]), "bf": flag.get(m["b"]),
                            "p": round(p, 3), "called": (p >= 0.5) == (m["w"] == 0)})
 
     top = sorted({p for s in series for p in s}, key=lambda p: -max(s.get(p, 0) for s in series))[:8]
@@ -162,6 +172,48 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
     }
 
 
+def champion_of(ev):
+    rounds = main_draw(ev)
+    if not rounds or not rounds[-1][1]:
+        return None
+    f = rounds[-1][1][0]
+    if f["status"] not in ("final", "retired", "walkover") or f["w"] is None:
+        return None
+    return f["a"] if f["w"] == 0 else f["b"]
+
+
+def past_events(events, tour, t, warmup_days=150):
+    """Finished covered events after the ratings' warm-up, with a known champion."""
+    start_ok = (date.fromisoformat(config.TENNIS_HISTORY_FROM) + timedelta(days=warmup_days)).isoformat()
+    done = (t - timedelta(days=2)).isoformat()
+    return [ev for ev in events if is_covered(ev, tour) and ev.get("start") and ev.get("end")
+            and ev["start"][:10] >= start_ok and ev["end"][:10] < done and champion_of(ev)
+            and len([m for _, ms in main_draw(ev) for m in ms]) >= 7]
+
+
+def grade_past_events(past, tour, elo, snaps, n=1000):
+    rows = []
+    for ev in past:
+        flat = [m for _, ms in main_draw(ev) for m in ms]
+        d = tb.pre_day(flat)
+        if d not in snaps:
+            continue
+        surface = surface_of(ev["name"], config.TENNIS_SURFACES)
+        ratings = elo.blend_snapshot(snaps[d], surface)
+        seed = seed_for("bt", ev["id"])
+        if is_finals(ev):
+            odds = simulate_finals(as_of_rr(ev, d), ratings, n, seed)[0]
+        else:
+            odds = simulate_draw(as_of(ev, d), ratings, tour == "atp" and is_slam(ev), n, seed)
+        names = {}
+        for m in flat:
+            for slot in ("a", "b"):
+                if m[slot]:
+                    names[m[slot]] = m[slot + "n"]
+        rows.append(tb.grade(ev["name"], ev["start"][:4], odds, champion_of(ev), names))
+    return rows
+
+
 def build(today_iso):
     t = date.fromisoformat(today_iso[:10])
     comps, model = [], {}
@@ -178,6 +230,8 @@ def build(today_iso):
                     if m["date"]:
                         wanted.add(day(m["date"]))
                         wanted.add((date.fromisoformat(day(m["date"])) - timedelta(days=1)).isoformat())
+        past = past_events(events, tour, t)
+        wanted.update(tb.pre_day([m for _, ms in main_draw(ev) for m in ms]) for ev in past)
         elo = TennisElo()
         snaps = elo.run(matches, wanted)
 
@@ -195,6 +249,8 @@ def build(today_iso):
                        "calibration": calibration(
                            [pair for m in recent for pr in [win_prob(*elo.pre_rating(m["id"]))]
                             for pair in ((pr, int(m["w"] == 0)), (1 - pr, int(m["w"] == 1)))])}
+        graded = grade_past_events(past, tour, elo, snaps)
+        model[tour]["title_backtest"] = {"summary": tb.summarise(graded), "events": graded}
         field = None
         if any(is_finals(ev) and not has_groups(ev) for ev in targets):
             try:
@@ -202,6 +258,13 @@ def build(today_iso):
             except RuntimeError as err:
                 print("  ! %s rankings: %s" % (tour, err))
         for ev in targets:
+            lo = (date.fromisoformat(ev["start"][:10]) - timedelta(days=3)).isoformat()
+            if any(tr == tour and lo <= d <= ev["end"][:10] for tr, d in FAILED_DAYS):
+                old = live_log.stale_copy("tennis", ev["id"], "ESPN didn't answer for part of this draw")
+                if old:
+                    print("  ! %s: fetch failed, keeping the last good copy" % ev["name"])
+                    comps.append(old)
+                    continue
             print("  simulating %s %s" % (tour.upper(), ev["name"]))
             comps.append(event_payload(ev, tour, elo, snaps, today_iso, field))
     return comps, model

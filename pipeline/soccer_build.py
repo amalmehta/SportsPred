@@ -7,8 +7,10 @@ import numpy as np
 
 from . import config
 from .common import SITE_DATA_DIR, calibration, day, now_iso, today, track_record, write_json
-from .soccer_data import fetch_groups, load_international_results, load_slug
+from . import flags, live_log
+from .soccer_data import FAILED, fetch_groups, load_international_results, load_slug
 from .soccer_model import Elo, fit_goals_model, score_predictions
+from . import title_backtest as tb
 from .soccer_sim import (Matchups, simulate_groups_ko, simulate_league,
                          simulate_league_phase_ko, simulate_qualifying)
 
@@ -224,6 +226,8 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
     if qualifying:  # group by group, likeliest qualifiers first
         teams = [t for t in teams if t in now["p_win"]]
         teams.sort(key=lambda t: ((group_of or {}).get(t) or "", -now["p_qualify"][t], -now["proj_pts"][t]))
+    national = sport_group in ("international", "qualifying")
+    flag = (lambda key: flags.for_country(key)) if national else (lambda key: None)
     rows = []
     for t in teams:
         r = table.get(t, {"played": 0, "pts": 0, "gd": 0})
@@ -232,7 +236,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
             "played": r["played"], "pts": r["pts"], "gd": r["gd"],
             "proj_pts": round(now["proj_pts"][t], 1) if t in now.get("proj_pts", {}) else None,
             "p_win": round(now["p_win"].get(t, 0.0), 4),
-            "group": (group_of or {}).get(t),
+            "group": (group_of or {}).get(t), "flag": flag(t),
         })
         if qualifying:
             rows[-1].update({"p_qualify": round(now["p_qualify"][t], 4), "p_playoff": round(now["p_playoff"][t], 4)})
@@ -251,6 +255,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
             continue
         ph, pd, pa, score, (lh, la) = mu.probs(m["home_key"], m["away_key"], m["neutral"])
         upcoming.append({"date": m["date"], "home": m["home"], "away": m["away"], "live": m["status"] == "live",
+                         "hf": flag(m["home_key"]), "af": flag(m["away_key"]),
                          "p": [round(ph, 3), round(pd, 3), round(pa, 3)], "score": list(score),
                          "xg": [round(lh, 2), round(la, 2)]})
         if len(upcoming) >= 30:
@@ -271,6 +276,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         rh, ra = elo.pre[m["id"]]
         p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
         recent.append({"date": m["date"], "home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
+                       "hf": flag(m["home_key"]), "af": flag(m["away_key"]),
                        "p": [round(x, 3) for x in p],
                        "called": max(range(3), key=lambda i: p[i]) == outcome(m)})
 
@@ -324,6 +330,8 @@ def build_clubs(today_iso):
             sm = [m for m in sm if lp and m["date"] >= min(lp)]
         seasons[cfg["slug"]] = sm
         wanted.update(replay_days(sm, today_iso))
+    past = past_seasons(by_slug, seasons)
+    wanted.update(tb.pre_day(sm) for _, _, sm in past)
     elo, samples, snaps = run_club_elo(finished, hfa, wanted)
 
     comps, rows = [], []
@@ -335,13 +343,66 @@ def build_clubs(today_iso):
             p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
             rows.append((p[0], p[1], p[2], outcome(m)))
     for cfg in config.SOCCER_COMPETITIONS:
+        if any(slug == cfg["slug"] and y >= t.year - 1 for slug, y in FAILED):
+            old = live_log.stale_copy("soccer", cfg["slug"], "ESPN didn't answer for this competition's latest results")
+            if old:  # keep the last good predictions for this one; everything else still updates
+                print("  ! %s: fetch failed, keeping the last good copy" % cfg["name"])
+                comps.append(old)
+                continue
         print("  simulating %s" % cfg["name"])
         payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso)
         comps.append(payload)
+    print("  grading past title odds")
+    graded = grade_past_seasons(past, snaps, gm, hfa, names)
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
              "backtest": score_predictions(rows), "matches_rated": len(finished),
-             "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)])}
+             "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)]),
+             "title_backtest": {"summary": tb.summarise(graded), "events": graded}}
     return comps, model
+
+
+def past_seasons(by_slug, current, warmup_until="2022-07-01"):
+    """Finished seasons we can grade: after the ratings' warm-up season, before the current one.
+
+    Returns (cfg, season label, matches). UEFA competitions keep only their league phase, so the
+    pre-season odds can't see any knockout draw.
+    """
+    out = []
+    for cfg in config.SOCCER_COMPETITIONS:
+        now = {m["season"] for m in current[cfg["slug"]]}
+        by_season = {}
+        for m in by_slug[cfg["slug"]]:
+            by_season.setdefault(m["season"], []).append(m)
+        for season, ms in sorted(by_season.items()):
+            if season in now or any(m["status"] != "final" for m in ms):
+                continue
+            if cfg["format"] == "league_phase_ko":
+                lp = [m["date"] for m in ms if "league" in m["stage"]]
+                if not lp:
+                    continue  # older format (group stage); not graded
+                ms = [m for m in ms if m["date"] >= min(lp)]
+            if min(m["date"] for m in ms) < warmup_until or len(ms) < 50:
+                continue
+            out.append((cfg, season_label(ms), ms))
+    return out
+
+
+def grade_past_seasons(past, snaps, gm, hfa, names, n=2000):
+    rows = []
+    for cfg, label, ms in past:
+        d = tb.pre_day(ms)
+        if d not in snaps:
+            continue
+        if cfg["format"] == "league":
+            winner, sim_ms = tb.league_champion(ms), ms
+        else:
+            winner = tb.cup_champion(ms)
+            sim_ms = [m for m in ms if "league" in m["stage"]]  # pre-season: only the league phase is fixed
+        if not winner:
+            continue
+        odds = simulate_comp(cfg, as_of(sim_ms, d), snaps[d], gm, hfa, n, seed_for("bt", cfg["slug"], label))["p_win"]
+        rows.append(tb.grade(cfg["name"], label, odds, winner, names))
+    return rows
 
 
 def intl_key(name):
@@ -397,6 +458,12 @@ def build_international(today_iso):
 
     comps = []
     for cfg, sm in active:
+        if any(slug == cfg["slug"] and y >= t.year - 1 for slug, y in FAILED):
+            old = live_log.stale_copy("soccer", cfg["slug"], "ESPN didn't answer for this competition's latest results")
+            if old:
+                print("  ! %s: fetch failed, keeping the last good copy" % cfg["name"])
+                comps.append(old)
+                continue
         print("  simulating %s" % cfg["name"])
         names = {m["home_key"]: m["home"] for m in sm}
         names.update({m["away_key"]: m["away"] for m in sm})
