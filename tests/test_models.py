@@ -6,7 +6,8 @@ import numpy as np
 from pipeline.soccer_model import Elo, GoalsModel, fit_goals_model, gd_multiplier, score_predictions
 from pipeline.soccer_sim import Matchups, knockout_state, sim_table, simulate_league, simulate_qualifying
 from pipeline.tennis_model import (TennisElo, _standings, as_of, as_of_rr, best_of_five, fit_surface_weight, round_rank,
-                                   rr_groups, simulate_draw, simulate_finals, surface_of, win_prob)
+                                   rr_groups, seeded_draw, simulate_draw, simulate_finals, surface_of,
+                                   win_prob)
 
 
 class SoccerModelTests(unittest.TestCase):
@@ -145,6 +146,21 @@ class TennisTests(unittest.TestCase):
         final = rounds[1][1][0]
         self.assertEqual(semi["status"], "scheduled")
         self.assertIsNone(final["a"])  # P1 hadn't reached the final yet
+
+    def test_seeded_draw_keeps_seeds_apart(self):
+        import random
+        rng = random.Random(1)
+        for size in (16, 32, 64, 128):
+            ranked = ["S%d" % i for i in range(1, size + 1)]
+            h, q, e = size // 2, size // 4, size // 8
+            for _ in range(50):
+                pos = {p: i for i, p in enumerate(seeded_draw(ranked, size, rng))}
+                self.assertEqual(len(pos), size)  # every player placed, no seed overwritten
+                self.assertNotEqual(pos["S1"] // h, pos["S2"] // h)
+                self.assertNotEqual(pos["S3"] // h, pos["S4"] // h)
+                self.assertEqual(len({pos["S%d" % i] // q for i in range(1, 5)}), 4)
+                self.assertEqual(len({pos["S%d" % i] // q for i in range(5, 9)}), 4)
+                self.assertEqual(len({pos["S%d" % i] // e for i in range(9, 17)}), 8)
 
 
 class SurfaceTests(unittest.TestCase):
