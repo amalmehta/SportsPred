@@ -34,7 +34,7 @@
     <li><a href="#match-chances">Turn two ratings into match chances</a> · <a href="#try-it">try it</a></li>
     <li><a href="#simulate">Play the rest out 10,000 times</a></li>
     <li><a href="#over-time">Odds over time</a></li>
-    <li><a href="#accuracy">How accurate is it?</a> · <a href="#calibration">calibration</a> · <a href="#favourites">did the favourites win?</a></li>
+    <li><a href="#accuracy">How accurate is it?</a> · <a href="#by-competition">by competition</a> · <a href="#calibration">calibration</a> · <a href="#favourites">did the favourites win?</a></li>
     <li><a href="#data">Where the data comes from</a></li>
     <li><a href="#limits">What it doesn't know</a></li>
   </ol></nav>
@@ -67,7 +67,7 @@
   <h2 id="simulate">3. Play the rest out 10,000 times</h2>
   <p>To pick a winner the model doesn't just pick the best-rated side. It simulates every remaining match 10,000 times, keeping real results already played:</p>
   <ul>
-    <li><b>Leagues</b> (Premier League, La Liga…): finish the table, break ties on goal difference and goals scored, see who's top. The same runs give each team's chance of a top-4 finish (Champions League places; top 3 in France) and of relegation (bottom 3; bottom 2 in Germany and France, where the playoff place isn't counted).</li>
+    <li><b>Leagues</b> (Premier League, La Liga…): finish the table, break ties the way each league does (goal difference then goals scored; in Spain and Italy the games between the teams level on points come first), see who's top. The same runs give each team's chance of a top-4 finish (Champions League places; top 3 in France) and of relegation (bottom 3; bottom 2 in Germany and France, where the playoff place isn't counted).</li>
     <li><b>Champions and Europa League</b>: finish the 36-team league phase, then the knockout playoffs (9th–24th), round of 16 and onwards, with two-legged ties and a one-off final. The table also shows each club's chance of a top-8 finish (straight to the round of 16) and of reaching the knockouts (top 24).</li>
     <li><b>International tournaments</b>: finish the groups, then the knockout bracket.</li>
     <li><b>World Cup qualifying</b>: finish each group table and count how often a team lands in a qualifying place, a playoff place, or top spot, using each confederation's places (for example, in Europe the winner qualifies and the runner-up goes to the playoffs; in South America the top six qualify). These pages appear on their own while qualifiers are being played; 2030 qualifying hadn't been scheduled as of October 2026.</li>
@@ -75,6 +75,7 @@
     <li><b>ATP and WTA Finals</b>: two round-robin groups of four (most wins first, a two-way tie goes to head-to-head), then semi-finals (group winner against the other group's runner-up) and a final. Before the groups are drawn, the field is projected from the current top 8 in the rankings and the draw is simulated too.</li>
   </ul>
   <p>A team's title chance is simply how often it won across those 10,000 runs.</p>
+  <p>Some things need no simulation. Once arithmetic alone settles a race (a team can't be caught even if it loses every game left, or can't catch up even if it wins them all), the table says <b>Sure</b> or <b>Out</b> instead of a percentage. That check ignores the games between rivals, so it never calls a race early. League tables also show <b>points against expectation</b> (points won minus what each game's pre-match chances were worth) and the <b>run-in</b>: how many points a team of the league's average rating would expect from each side's remaining fixtures. In tennis, the same runs give the <b>likeliest final</b>.</p>
   <p>The same runs say which games matter: split the simulations by one game's result and see how much each contender's chance moves. League pages show the biggest of these as <b>Matches that matter</b>, and <b>What if…?</b> lets you fix results yourself and replay the season in your browser.</p>
 
   <h2 id="over-time">4. Odds over time</h2>
@@ -85,6 +86,10 @@
   <p>Each match is checked against the prediction the model would have made just before kick-off, over the last 12 months:</p>
   <div class="stats" id="stats"></div>
   <p class="small muted">A "called it" means the outcome we rated most likely happened. Soccer has three outcomes (and draws are hard to call), so around 50% is respectable; tennis has two, so it scores higher. The Brier score measures how close the probabilities were (0 is perfect; lower is better).</p>
+
+  <h3 id="by-competition">Competition by competition</h3>
+  <p>Against a <b>baseline with no skill</b>: in soccer, knowing only how often home wins, draws and away wins happen in that competition (and always picking the commonest); in tennis, a coin toss. <b>Skill</b> is how much lower our log loss is than the baseline's: 0% would mean the ratings add nothing. Tennis is split by level: Grand Slams, the 1000s and Finals we predict, and the rest of the tour.</p>
+  <div class="panel" style="padding:4px 8px" id="by-comp"></div>
 
   <h3 id="calibration">Do the percentages mean what they say?</h3>
   <p>Being right often isn't enough: when the model says 70%, that should happen about 70% of the time. The chart groups every prediction from the last 12 months into 10% bands and plots how often those things actually happened. Points on the dashed line are spot on. If the high bands sit below the line and the low bands above it, the model was too confident.</p>
@@ -109,7 +114,7 @@
     <li>Injuries, suspensions, rotation, transfers and managers: only results go in.</li>
     <li>Tennis surfaces come from a list of tournament names (ESPN doesn't publish them); unlisted events count as hard court, and indoor and outdoor hard courts are treated alike.</li>
     <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockouts follow the real format (seeded playoff pools, a fixed bracket from the round of 16, real ties and results once they're drawn); only pairings not yet drawn are random within their pool.</li>
-    <li>Points deductions and soccer head-to-head tie-breakers aren't modelled. At the tennis Finals, three-way ties are split at random rather than by sets and games won.</li>
+    <li>Points deductions aren't modelled. Head-to-head tie-breakers are used where they come first (La Liga, Serie A); Serie A's playoff for a tie on top or in the last relegation place isn't, and the What if tool always uses goal difference. At the tennis Finals, three-way ties are split at random rather than by sets and games won.</li>
     <li>World Cup qualifying places follow the 2026 cycle until FIFA confirms 2030's, and "best runners-up" rules (Africa, North &amp; Central America) are simplified to "every runner-up".</li>
     <li>Before a Grand Slam or 1000-level draw is out, odds are projected from the top 64 in the rankings with a seeded random draw; byes, qualifiers and withdrawals aren't modelled until the real draw appears.</li>
     <li>The projected Finals field uses the 52-week rankings because ESPN doesn't publish the Race; withdrawals and alternates only show up once the real draw does.</li>

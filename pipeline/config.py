@@ -7,14 +7,16 @@ TENNIS_HISTORY_FROM = "2024-01-01"
 # Club competitions we predict. `format`:
 #   league           - double round-robin table; winner = top of the table
 #                      top / drop: Champions League places and direct relegation places (playoffs not counted)
+#                      tiebreak: "h2h" when teams level on points are split first by the games between
+#                      them (La Liga, Serie A); otherwise by goal difference, then goals scored
 #   league_phase_ko  - UEFA's 36-team league phase, then knockouts
 SOCCER_COMPETITIONS = [
     {"slug": "eng.1", "name": "Premier League", "country": "England", "format": "league", "group": "domestic",
      "top": 4, "drop": 3},
     {"slug": "esp.1", "name": "La Liga", "country": "Spain", "format": "league", "group": "domestic",
-     "top": 4, "drop": 3},
+     "top": 4, "drop": 3, "tiebreak": "h2h"},
     {"slug": "ita.1", "name": "Serie A", "country": "Italy", "format": "league", "group": "domestic",
-     "top": 4, "drop": 3},
+     "top": 4, "drop": 3, "tiebreak": "h2h"},
     {"slug": "ger.1", "name": "Bundesliga", "country": "Germany", "format": "league", "group": "domestic",
      "top": 4, "drop": 2},
     {"slug": "fra.1", "name": "Ligue 1", "country": "France", "format": "league", "group": "domestic",

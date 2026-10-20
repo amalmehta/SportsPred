@@ -146,3 +146,29 @@ def score_predictions(rows):
     n = len(rows)
     return {"n": n, "accuracy": acc / n, "brier": brier / n, "log_loss": ll / n,
             "draw_rate_predicted": draw_pred / n, "draw_rate_actual": draw_act / n}
+
+
+def no_skill(rows):
+    """What you'd score knowing only how often home wins, draws and away wins happen in these matches:
+    always pick the commonest result, and give every match those same three chances."""
+    if not rows:
+        return {"n": 0}
+    n = float(len(rows))
+    freq = [sum(1 for r in rows if r[3] == o) / n for o in range(3)]
+    return {"n": len(rows), "accuracy": max(freq), "log_loss": -sum(f * math.log(f) for f in freq if f > 0)}
+
+
+def by_competition(rows, names):
+    """rows: (competition id, p_home, p_draw, p_away, outcome). One accuracy line per competition, with
+    the no-skill baseline beside it; skill = how much lower our log loss is than the baseline's."""
+    out = []
+    for cid in names:
+        mine = [r[1:] for r in rows if r[0] == cid]
+        if len(mine) < 20:
+            continue
+        ours, base = score_predictions(mine), no_skill(mine)
+        out.append({"id": cid, "name": names[cid], "n": ours["n"], "accuracy": round(ours["accuracy"], 4),
+                    "log_loss": round(ours["log_loss"], 4), "base_accuracy": round(base["accuracy"], 4),
+                    "base_log_loss": round(base["log_loss"], 4),
+                    "skill": round(1 - ours["log_loss"] / base["log_loss"], 4)})
+    return out

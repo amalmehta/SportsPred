@@ -1,5 +1,6 @@
 """Build tennis predictions: player ratings, title odds per tournament, odds over time."""
 import hashlib
+import math
 import os
 from datetime import date, timedelta
 
@@ -90,7 +91,8 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
     p_sf, reach = {}, {}
     if finals:
         flat = [m for _, ms in rounds for m in ms]
-        now, p_sf = simulate_finals(flat, ratings, config.SIMS_TODAY, seed, projected) if (flat or projected) else ({}, {})
+        reach["finals"] = {}
+        now, p_sf = simulate_finals(flat, ratings, config.SIMS_TODAY, seed, projected, finals=reach["finals"]) if (flat or projected) else ({}, {})
     elif projected:
         now = simulate_projected(projected, ratings, bo5, config.SIMS_TODAY // 2, seed, size=64, reach=reach)
     else:
@@ -135,7 +137,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
     for p in players:
         row = {"player": players[p], "id": p, "rating": round(ratings.get(p, 1500)), "flag": flag.get(p),
                "p_win": round(now.get(p, 0.0), 4), "alive": p not in lost}
-        if reach:
+        if any(reach.get(k) for k in ("qf", "sf", "f")):
             row["reach"] = {k: round(reach[k].get(p, 0.0), 4) for k in ("qf", "sf", "f") if reach.get(k)}
         if finals:
             row.update({"p_sf": round(p_sf.get(p, 0.0), 4), "group": group_of.get(p),
@@ -175,6 +177,12 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
                            "af": flag.get(m["a"]), "bf": flag.get(m["b"]),
                            "p": round(p, 3), "called": (p >= 0.5) == (m["w"] == 0)})
 
+    # the likeliest finals, from the same simulations (not once the final is set)
+    likely_final = [{"a": players.get(a, a), "b": players.get(b, b), "p": round(p, 4)}
+                    for (a, b), p in sorted((reach.get("finals") or {}).items(), key=lambda kv: -kv[1])[:3]
+                    if p >= 0.01] if not champion else []
+    if likely_final and likely_final[0]["p"] >= 0.999:
+        likely_final = []
     top = sorted({p for s in series for p in s}, key=lambda p: -max(s.get(p, 0) for s in series))[:8]
     top.sort(key=lambda p: (-series[0].get(p, 0), players.get(p, p)))  # colours stay with each player
     t = today_iso[:10]
@@ -196,6 +204,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
         "history": {"dates": series_days,
                     "series": [{"team": players.get(p, p), "p": [round(s.get(p, 0.0), 4) for s in series]} for p in top]},
         "favourite": {"name": fav["player"], "p": fav["p_win"]} if fav else None,
+        "likely_final": likely_final,
         "next_match": upcoming[0]["date"] if upcoming else ev["start"],
     }
 
@@ -277,6 +286,20 @@ def build(today_iso):
                        "calibration": calibration(
                            [pair for m in recent for pr in [win_prob(*elo.pre_rating(m["id"]))]
                             for pair in ((pr, int(m["w"] == 0)), (1 - pr, int(m["w"] == 1)))])}
+        # accuracy by level: Grand Slams, the events we predict, and the rest of the tour
+        level = {e["id"]: ("Grand Slams" if is_slam(e) else "1000s and Finals" if is_covered(e, tour) else "Other tour events")
+                 for e in events}
+        name = config.TENNIS_TOURS[tour]["name"]
+        model[tour]["by_competition"] = []
+        for lv in ("Grand Slams", "1000s and Finals", "Other tour events"):
+            ms = [m for m in recent if level.get(m["event"]) == lv]
+            sc = score(elo, ms, elo.weight)
+            if sc.get("n", 0) >= 20:
+                model[tour]["by_competition"].append({
+                    "id": "%s-%s" % (tour, lv), "name": "%s · %s" % (name, lv), "n": sc["n"],
+                    "accuracy": round(sc["accuracy"], 4), "log_loss": round(sc["log_loss"], 4),
+                    "base_accuracy": 0.5, "base_log_loss": round(math.log(2), 4),
+                    "skill": round(1 - sc["log_loss"] / math.log(2), 4)})
         graded = grade_past_events(past, tour, elo, snaps)
         model[tour]["title_backtest"] = {"summary": tb.summarise(graded), "events": graded}
         # for team pages and the compare tool: rating history (last year) and every rating by surface

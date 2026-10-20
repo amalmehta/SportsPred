@@ -9,7 +9,7 @@ from . import config
 from .common import SITE_DATA_DIR, calibration, day, now_iso, today, track_record, write_json
 from . import flags, live_log
 from .soccer_data import FAILED, fetch_groups, load_international_results, load_slug
-from .soccer_model import Elo, fit_goals_model, score_predictions
+from .soccer_model import Elo, by_competition, fit_goals_model, score_predictions
 from . import title_backtest as tb
 from .soccer_sim import RATING_SD
 from .soccer_sim import (Matchups, simulate_groups_ko, simulate_league,
@@ -174,7 +174,7 @@ def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None, t
         teams = sorted({m["home_key"] for m in season_matches} | {m["away_key"] for m in season_matches})
         return simulate_league(teams, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
                                [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed,
-                               top=cfg.get("top"), bottom=cfg.get("drop"), track=track)
+                               top=cfg.get("top"), bottom=cfg.get("drop"), track=track, tiebreak=cfg.get("tiebreak", "gd"))
     if fmt == "qualifying":
         direct, nxt, _ = cfg["_slots"]
         return simulate_qualifying(groups, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
@@ -253,6 +253,71 @@ def whatif_data(season_matches, mu, names, cfg):
             "noise": round(RATING_SD * mu.gm.slope / 400.0, 4), "top": cfg.get("top"), "drop": cfg.get("drop")}
 
 
+def certainties(table, remaining, top=None, drop=None):
+    """What's already settled in a league, by arithmetic alone: {team: {"title"|"top"|"safe"|"down": True/False}}.
+
+    True means certain, False means impossible; unsettled races are left out. Each team's best case is
+    winning every game left and its worst case losing them all. Games between rivals are ignored, so a
+    race can be settled a little later here than in reality, but never earlier.
+    """
+    lo = {t: table.get(t, {}).get("pts", 0) for t in remaining}
+    hi = {t: lo[t] + 3 * remaining[t] for t in remaining}
+    out = {}
+    for t in remaining:
+        others = [u for u in remaining if u != t]
+        can_pass = sum(1 for u in others if hi[u] >= lo[t])  # could finish level or above t's worst
+        surely_above = sum(1 for u in others if lo[u] > hi[t])  # finish above t's best whatever happens
+        surely_below = sum(1 for u in others if hi[u] < lo[t])
+        known = {}
+        if can_pass == 0:
+            known["title"] = True
+        elif surely_above >= 1:
+            known["title"] = False
+        if top:
+            if can_pass < top:
+                known["top"] = True
+            elif surely_above >= top:
+                known["top"] = False
+        if drop:
+            if surely_below >= drop:
+                known["safe"], known["down"] = True, False
+            elif surely_above >= len(remaining) - drop:
+                known["safe"], known["down"] = False, True
+        if known:
+            out[t] = known
+    return out
+
+
+def expected_points(fin, elo, gm, hfa):
+    """Points each team would expect from its finished games, given the pre-match chances."""
+    out = {}
+    for m in fin:
+        if m["id"] not in elo.pre:
+            continue
+        rh, ra = elo.pre[m["id"]]
+        ph, pd, pa = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
+        out[m["home_key"]] = out.get(m["home_key"], 0.0) + 3 * ph + pd
+        out[m["away_key"]] = out.get(m["away_key"], 0.0) + 3 * pa + pd
+    return out
+
+
+def run_in(todo, mu, teams):
+    """Each team's games left: how many, how many at home, the average opponent rating, and the points
+    a team of the league's average rating would expect from those same games (lower = harder)."""
+    out = {}
+    avg = float(np.mean([mu.rating(t) for t in teams])) if teams else mu.default
+    for m in todo:
+        for t, opp, home in ((m["home_key"], m["away_key"], True), (m["away_key"], m["home_key"], False)):
+            gap = avg - mu.rating(opp) + (0 if m["neutral"] else (mu.hfa if home else -mu.hfa))
+            pw, pd, pl = mu.gm.outcome_probs(gap)[:3]
+            r = out.setdefault(t, [0, 0, 0.0, 0.0])
+            r[0] += 1
+            r[1] += 1 if home and not m["neutral"] else 0
+            r[2] += mu.rating(opp)
+            r[3] += 3 * pw + pd
+    return {t: {"left": n, "home": h, "opp": round(s / n), "par": round(x / n, 2)} for t, (n, h, s, x) in out.items()}
+
+
 def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_iso, groups=None, group_of=None, h2h=None):
     hfa = elo.hfa
     seed = seed_for(cfg["slug"], today_iso[:10])
@@ -309,6 +374,21 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
     mu = Matchups(elo.ratings, gm, hfa)
     upcoming = []
     todo = sorted([m for m in season_matches if m["status"] != "final"], key=lambda m: m["date"])
+    runin = None
+    if cfg["format"] == "league":  # settled races, points against expectation, and the run-in
+        left = {t: 0 for t in teams}
+        for m in todo:
+            for k in (m["home_key"], m["away_key"]):
+                left[k] = left.get(k, 0) + 1
+        sure = certainties(table, left, cfg.get("top"), cfg.get("drop"))
+        xpts = expected_points(fin, elo, gm, hfa)
+        for t, row in zip(teams, rows):
+            row["xpts"] = round(xpts.get(t, 0.0), 1)
+            if t in sure:
+                row["sure"] = sure[t]
+        if todo:
+            ri = run_in(todo, mu, teams)
+            runin = sorted(({"team": names.get(t, t), **v} for t, v in ri.items()), key=lambda x: (x["par"], x["team"]))
     horizon = (date.fromisoformat(today_iso[:10]) + timedelta(days=10)).isoformat()
     for m in todo:
         if m["status"] == "postponed" or (len(upcoming) >= 10 and m["date"] > horizon):
@@ -372,6 +452,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
                    for sw in now.get("swings", [])],
         "whatif": whatif_data(season_matches, mu, names, cfg) if cfg["format"] == "league" else None,
         "positions": position_grid(now, names),
+        "run_in": runin,
         "places": ({"top": cfg.get("top"), "drop": cfg.get("drop")} if cfg["format"] == "league" else
                    {"top": 8, "ko": 24} if cfg["format"] == "league_phase_ko" else None),
         "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,
@@ -406,7 +487,7 @@ def build_clubs(today_iso):
     elo, samples, snaps = run_club_elo(finished, hfa, wanted)
 
     h2h = h2h_index(finished)
-    comps, rows = [], []
+    comps, rows, tagged = [], [], []
     cut = (t - timedelta(days=365)).isoformat()
     predicted = {c["slug"] for c in config.SOCCER_COMPETITIONS}
     for m in finished:
@@ -414,6 +495,7 @@ def build_clubs(today_iso):
             rh, ra = elo.pre[m["id"]]
             p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
             rows.append((p[0], p[1], p[2], outcome(m)))
+            tagged.append((m["slug"],) + rows[-1])
     for cfg in config.SOCCER_COMPETITIONS:
         if any(slug == cfg["slug"] and y >= t.year - 1 for slug, y in FAILED):
             old = live_log.stale_copy("soccer", cfg["slug"], "ESPN didn't answer for this competition's latest results")
@@ -428,6 +510,7 @@ def build_clubs(today_iso):
     graded = grade_past_seasons(past, snaps, gm, hfa, names)
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
              "backtest": score_predictions(rows), "matches_rated": len(finished),
+             "by_competition": by_competition(tagged, {c["slug"]: c["name"] for c in config.SOCCER_COMPETITIONS}),
              "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)]),
              "title_backtest": {"summary": tb.summarise(graded), "events": graded},
              "_histories": rating_histories(finished, elo, names, today_iso, days=400),
@@ -574,6 +657,7 @@ def build_international(today_iso):
             bt.append((p[0], p[1], p[2], outcome(r)))
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
              "backtest": score_predictions(bt), "matches_rated": len(rows),
+             "by_competition": by_competition([("intl",) + r for r in bt], {"intl": "Internationals (all)"}),
              "calibration": calibration([(r[i], int(r[3] == i)) for r in bt for i in range(3)])}
     teams_now = {r["team"] for c in comps for r in c.get("table", [])}
     model["_histories"] = rating_histories([dict(r, home_key=r["home"], away_key=r["away"]) for r in rows], elo,

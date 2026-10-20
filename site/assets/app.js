@@ -117,10 +117,40 @@ const SP = (() => {
     document.getElementById("open-settings").onclick = openSettings;
     buildSettings();
     buildFeedback();
+    buildShortcuts();
     document.addEventListener("keydown", e => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") { e.preventDefault(); openSettings(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") { e.preventDefault(); openSettings(); return; }
+      const typing = /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "") || document.querySelector("dialog[open]");
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "?") { e.preventDefault(); openShortcuts(); }
+      // "/" searches: the home page has its own box; anywhere else, go there
+      else if (e.key === "/" && !document.getElementById("find")) { e.preventDefault(); location.href = "index.html?find"; }
     });
   }
+
+  /* ---------- keyboard shortcuts (press ?) ---------- */
+  const inMacApp = /SportsPredMac/.test(navigator.userAgent);
+  function buildShortcuts() {
+    const mod = isMac ? "⌘" : "Ctrl+";
+    const rows = [
+      ["?", "Show these shortcuts"],
+      ["/", "Find a team, player or competition"],
+      ["↑ ↓ · Enter · Esc", "Move through search results, open one, clear the search"],
+      [mod + ",", "Settings"],
+    ].concat(inMacApp ? [
+      ["⌘F", "Find a team or player"], ["⌘1 · ⌘2 · ⌘3", "Soccer · Tennis · How It Works"], ["⇧⌘H", "Home"],
+      ["⌘[ · ⌘]", "Back · Forward"], ["⌘R", "Reload"], ["⌘+ · ⌘− · ⌘0", "Zoom in · out · actual size"],
+      ["⇧⌘C", "Copy a link to this page"], ["⌥⌘O", "Open this page in your browser"],
+    ] : []);
+    const d = document.createElement("dialog");
+    d.id = "shortcuts";
+    d.innerHTML = `<div class="dlg-head"><h3>Keyboard shortcuts</h3><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+      <div class="dlg-body"><table class="keys"><tbody>${rows.map(([k, what]) => `<tr><td>${k.split(" · ").map(x => x.split(" ").map(y => `<kbd>${esc(y)}</kbd>`).join(" ")).join(" / ")}</td><td>${esc(what)}</td></tr>`).join("")}</tbody></table></div>`;
+    document.body.appendChild(d);
+    d.querySelector("[data-close]").onclick = () => d.close();
+    d.addEventListener("click", e => { if (e.target === d) d.close(); });
+  }
+  function openShortcuts() { const d = document.getElementById("shortcuts"); if (d && !d.open) d.showModal(); }
 
   const OPTIONS = [
     ["theme", "Appearance", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]],
@@ -136,11 +166,12 @@ const SP = (() => {
       <div class="dlg-body">${OPTIONS.map(([k, label, opts]) => `
         <div class="field"><label>${label}</label><div class="seg" data-key="${k}">
           ${opts.map(([v, t]) => `<button type="button" data-v="${v}">${t}</button>`).join("")}</div></div>`).join("")}
-        <p class="muted small" style="margin:0">Saved in this browser. Press ${isMac ? "⌘," : "Ctrl+,"} to open settings anywhere.</p>
+        <p class="muted small" style="margin:0">Saved in this browser. Press ${isMac ? "⌘," : "Ctrl+,"} to open settings anywhere, or <button type="button" class="linkish" id="show-keys">?</button> for every keyboard shortcut.</p>
       </div>`;
     document.body.appendChild(d);
     d.querySelector("[data-close]").onclick = () => d.close();
     d.addEventListener("click", e => { if (e.target === d) d.close(); });
+    d.querySelector("#show-keys").onclick = () => { d.close(); openShortcuts(); };
     d.querySelectorAll(".seg").forEach(seg => seg.addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       set(seg.dataset.key, b.dataset.v); paintSettings();

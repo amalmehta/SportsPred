@@ -1,5 +1,6 @@
 """End-to-end tests on synthetic data (no network): a whole competition file is built, written and
 passed through the publish check, the way the real pipeline does it."""
+import math
 import os
 import random
 import tempfile
@@ -168,6 +169,10 @@ class TennisPipelineTests(unittest.TestCase):
         self.assertEqual(c["status"], "live")
         self.assertEqual(c["record"]["n"], 2)
         self.assertEqual(check.problems_in(c), [])
+        names = {r["player"] for r in c["table"] if r["alive"]}
+        self.assertTrue(c["likely_final"])
+        self.assertLessEqual(sum(f["p"] for f in c["likely_final"]), 1.0)
+        self.assertTrue(all(f["a"] in names and f["b"] in names for f in c["likely_final"]))
 
 
 class TitleBacktestTests(unittest.TestCase):
@@ -288,6 +293,76 @@ class RoundSixTests(unittest.TestCase):
         self.assertEqual(n, 4)
         self.assertIn("competition.html?sport=soccer&amp;id=eng.1", xml)
         self.assertIn("team.html?id=soccer-arsenal", xml)
+
+
+class RoundSevenTests(unittest.TestCase):
+    def test_head_to_head_tiebreak(self):
+        import numpy as np
+        from pipeline.soccer_sim import sim_table
+        mu = Matchups({}, GoalsModel(), 60)
+        # X and Y both on 4 points: Y has the better goal difference, X won the games between them
+        results = [("X", "Y", 1, 0), ("Y", "X", 0, 0), ("Y", "Z", 5, 0), ("X", "Z", 0, 1)]
+        teams = ["X", "Y", "Z"]
+        gd_order, _ = sim_table(teams, results, [], mu, 20, np.random.default_rng(0))
+        h2h_order, _ = sim_table(teams, results, [], mu, 20, np.random.default_rng(0), tiebreak="h2h")
+        self.assertTrue((gd_order[:, 0] == 1).all())
+        self.assertTrue((h2h_order[:, 0] == 0).all())
+        self.assertTrue((h2h_order[:, 2] == 2).all())
+
+    def test_certainties_are_only_claimed_when_arithmetic_allows(self):
+        table = {"A": {"pts": 80}, "B": {"pts": 70}, "C": {"pts": 40}, "D": {"pts": 20}}
+        left = {"A": 2, "B": 2, "C": 2, "D": 2}
+        sure = soccer_build.certainties(table, left, top=2, drop=1)
+        self.assertTrue(sure["A"]["title"])          # 80 > 70 + 6
+        self.assertFalse(sure["B"]["title"])
+        self.assertTrue(sure["B"]["top"])            # only A can reach 70
+        self.assertFalse(sure["C"]["top"])
+        self.assertTrue(sure["D"]["down"])           # three teams sure to finish above
+        self.assertTrue(sure["C"]["safe"])
+        close = soccer_build.certainties({"A": {"pts": 80}, "B": {"pts": 76}}, {"A": 2, "B": 2})
+        self.assertEqual(close, {})                  # B can still catch A
+
+    def test_league_extras_agree_with_the_simulations(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        c = t.payload()
+        for r in c["table"]:
+            self.assertGreaterEqual(r["xpts"], 0)
+            sure = r.get("sure", {})
+            if sure.get("title") is False:
+                self.assertEqual(r["p_win"], 0)
+            if sure.get("title") is True:
+                self.assertEqual(r["p_win"], 1)
+        todo = [m for m in t.matches if m["status"] != "final"]
+        self.assertEqual(sum(x["left"] for x in c["run_in"]), 2 * len(todo))
+        self.assertEqual([x["par"] for x in c["run_in"]], sorted(x["par"] for x in c["run_in"]))  # hardest first
+        played = [m for m in t.matches if m["status"] == "final"]
+        # expected points add up to 3 a game, less one for each expected draw
+        self.assertLessEqual(sum(r["xpts"] for r in c["table"]), 3 * len(played) + 0.5)
+        self.assertGreaterEqual(sum(r["xpts"] for r in c["table"]), 2 * len(played) - 0.5)
+
+    def test_no_skill_baseline_and_accuracy_by_competition(self):
+        from pipeline.soccer_model import by_competition, no_skill
+        rows = [(0.6, 0.2, 0.2, 0)] * 30 + [(0.3, 0.4, 0.3, 1)] * 10
+        base = no_skill(rows)
+        self.assertAlmostEqual(base["accuracy"], 0.75)
+        self.assertAlmostEqual(base["log_loss"], -(0.75 * math.log(0.75) + 0.25 * math.log(0.25)))
+        out = by_competition([("x",) + r for r in rows] + [("y",) + rows[0]], {"x": "X", "y": "Y"})
+        self.assertEqual([o["id"] for o in out], ["x"])  # too few matches in y to report
+        self.assertAlmostEqual(out[0]["skill"], 1 - out[0]["log_loss"] / out[0]["base_log_loss"], places=3)
+
+    def test_likeliest_finals_add_up(self):
+        from pipeline.tennis_model import simulate_projected
+        ranked = ["S%d" % i for i in range(1, 17)]
+        reach = {}
+        simulate_projected(ranked, {p: 2000 - 20 * i for i, p in enumerate(ranked)}, False, 1000, 3, size=16, reach=reach)
+        self.assertAlmostEqual(sum(reach["finals"].values()), 1.0, places=6)
+        top = max(reach["finals"], key=reach["finals"].get)
+        self.assertEqual(top, ("S1", "S2"))  # 1 and 2 can only meet in the final
+        from pipeline.tennis_model import simulate_finals
+        pairs = {}
+        simulate_finals([], {p: 2000 - 20 * i for i, p in enumerate(ranked[:8])}, 1000, 4, projected=ranked[:8], finals=pairs)
+        self.assertAlmostEqual(sum(pairs.values()), 1.0, places=6)
 
 
 if __name__ == "__main__":

@@ -126,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         runOnPage("(document.getElementById('open-settings') || {click(){}}).click()")
     }
     @objc func sendFeedback(_ sender: Any?) { runOnPage("(document.querySelector('.fb-tab') || {click(){}}).click()") }
+    @objc func showShortcuts(_ sender: Any?) { runOnPage("(document.getElementById('shortcuts') || {showModal(){}}).showModal()") }
     @objc func reload(_ sender: Any?) {
         if webView.url == nil || webView.url?.absoluteString == "about:blank" { go(siteURL) } else { webView.reload() }
     }
@@ -242,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         NSApp.windowsMenu = windowMenu
         let help = submenu("Help", [
             item("Send Feedback…", #selector(sendFeedback(_:)), target: me),
+            item("Keyboard Shortcuts", #selector(showShortcuts(_:)), target: me),
             item("How the Predictions Work", #selector(goHow(_:)), target: me),
             item("SportsPred on GitHub", #selector(openSource(_:)), target: me),
         ])

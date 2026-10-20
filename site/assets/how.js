@@ -12,6 +12,7 @@
     add("ATP tennis", m.tennis && m.tennis.atp && m.tennis.atp.backtest);
     add("WTA tennis", m.tennis && m.tennis.wta && m.tennis.wta.backtest);
     box.innerHTML = items.join("") || '<div class="muted">Run the build to see accuracy.</div>';
+    byCompetition(m);
     calibrationChart(m);
     titleRecord(m);
     const t = m.tennis || {};
@@ -23,6 +24,27 @@
     }
   } catch (e) { box.innerHTML = '<div class="muted">Run the build to see accuracy.</div>'; SP.footer(); }
 })();
+// each competition against a no-skill baseline: soccer knows only how often home wins, draws and away
+// wins happen there; tennis is a coin toss. Skill = how much lower our log loss is than the baseline's.
+function byCompetition(m) {
+  const t = m.tennis || {};
+  const rows = [].concat((m.soccer_clubs || {}).by_competition || [], (m.soccer_international || {}).by_competition || [],
+    (t.atp || {}).by_competition || [], (t.wta || {}).by_competition || []);
+  const box = document.getElementById("by-comp");
+  if (!rows.length) { box.hidden = true; return; }
+  const pct = v => Math.round(v * 100) + "%", top = Math.max(...rows.map(r => r.skill));
+  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Competition</th><th class="num opt">Matches</th>
+    <th class="num" title="How often the result we rated likeliest happened">Called</th>
+    <th class="num" title="Soccer: always picking the commonest result. Tennis: a coin toss.">Baseline</th>
+    <th class="num" title="How much lower our log loss is than the baseline's">Skill</th>
+    <th class="num opt" title="Lower is better">Log loss</th><th class="num opt">Baseline log loss</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${SP.esc(r.name)}</td><td class="num opt">${r.n.toLocaleString()}</td><td class="num">${pct(r.accuracy)}</td>
+      <td class="num muted">${pct(r.base_accuracy)}</td>
+      <td class="num">${(r.skill * 100).toFixed(1)}%<span class="pbar"><i style="width:${Math.max(0, r.skill / top) * 100}%"></i></span></td>
+      <td class="num opt">${r.log_loss.toFixed(3)}</td><td class="num opt muted">${r.base_log_loss.toFixed(3)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
 function titleRecord(m) {
   const t = m.tennis || {};
   const groups = [["Club soccer seasons", m.soccer_clubs], ["ATP tournaments", t.atp], ["WTA tournaments", t.wta]]

@@ -221,7 +221,8 @@ def reach_key(name):
 def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reach=None):
     """Monte Carlo over the remaining draw. Returns {player id: P(title)}.
 
-    Pass a dict as `reach` to also get {"qf"|"sf"|"f": {player id: P(reach that round)}}.
+    Pass a dict as `reach` to also get {"qf"|"sf"|"f": {player id: P(reach that round)}}, plus
+    "finals": {(player, player): P(that pair contests the final)}.
 
     ESPN doesn't publish bracket positions, so known players are linked to the match they came
     from; open slots (TBD) take winners of unlinked matches from the round before, drawn at random.
@@ -259,7 +260,9 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
 
     wins = defaultdict(int)
     reached = {k: defaultdict(int) for k in ("qf", "sf", "f")}
+    finals = defaultdict(int)
     keys = [reach_key(name) for name, _ in rounds]
+    last = len(rounds) - 1
     for s in range(n):
         winner = {}
         orphans = []
@@ -277,6 +280,8 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
                     for p in (a, b):
                         if not isinstance(p, tuple):
                             reached[keys[r]][p] += 1
+                if r == last and len(ms) == 1 and not isinstance(a, tuple) and not isinstance(b, tuple):
+                    finals[tuple(sorted((a, b)))] += 1
                 if m["status"] in ("final", "retired", "walkover") and m["w"] is not None:
                     winner[m["id"]] = a if m["w"] == 0 else b
                 else:
@@ -287,6 +292,7 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
             wins[champ] += 1
     if reach is not None:
         reach.update({k: {p: c / float(n) for p, c in v.items()} for k, v in reached.items()})
+        reach["finals"] = {pair: c / float(n) for pair, c in finals.items()}
     return {p: c / float(n) for p, c in wins.items()}
 
 
@@ -329,6 +335,7 @@ def simulate_projected(ranked, ratings, best_of_5, n, seed, size=64, reach=None)
         return rng.random() < cache[(a, b)]
     wins = defaultdict(int)
     reached = {k: defaultdict(int) for k in ("qf", "sf", "f")}
+    finals = defaultdict(int)
     for _ in range(n):
         field = seeded_draw(ranked, size, rng)
         while len(field) > 1:
@@ -336,10 +343,13 @@ def simulate_projected(ranked, ratings, best_of_5, n, seed, size=64, reach=None)
             if k:
                 for p in field:
                     reached[k][p] += 1
+            if len(field) == 2:
+                finals[tuple(sorted(field))] += 1
             field = [a if beats(a, b) else b for a, b in zip(field[::2], field[1::2])]
         wins[field[0]] += 1
     if reach is not None:
         reach.update({k: {p: c / float(n) for p, c in v.items()} for k, v in reached.items()})
+        reach["finals"] = {pair: c / float(n) for pair, c in finals.items()}
     return {p: c / float(n) for p, c in wins.items()}
 
 
@@ -414,8 +424,9 @@ def _standings(players, results, rng):
     return order
 
 
-def simulate_finals(matches, ratings, n, seed, projected=None):
+def simulate_finals(matches, ratings, n, seed, projected=None, finals=None):
     """Monte Carlo for a season finale. Returns ({player: P(title)}, {player: P(reach semis)}).
+    Pass a dict as `finals` to also get {(player, player): P(that pair contests the final)}.
 
     projected: ranked list of 8 player ids to use before ESPN publishes the groups. The draw then
     follows the tours' rules: seeds 1 and 2 apart, and 3/4, 5/6 and 7/8 each split between the groups.
@@ -445,7 +456,7 @@ def simulate_finals(matches, ratings, n, seed, projected=None):
             return m["a"] if m["w"] == 0 else m["b"]
         return a if beats(a, b) else b
 
-    titles, semis_reached = defaultdict(int), defaultdict(int)
+    titles, semis_reached, final_pairs = defaultdict(int), defaultdict(int), defaultdict(int)
     for _ in range(n):
         if use_projection:
             ga, gb = [projected[0]], [projected[1]]
@@ -492,7 +503,10 @@ def simulate_finals(matches, ratings, n, seed, projected=None):
             semis_reached[b] += 1
             finalists.append(winner(m, a, b) if m is not None else (a if beats(a, b) else b))
         f = final[0] if final and final[0]["a"] and final[0]["b"] else None
+        final_pairs[tuple(sorted((f["a"], f["b"]) if f is not None else finalists))] += 1
         champ = winner(f) if f is not None else (finalists[0] if beats(finalists[0], finalists[1]) else finalists[1])
         titles[champ] += 1
+    if finals is not None:
+        finals.update({pair: c / float(n) for pair, c in final_pairs.items()})
     return ({p: c / float(n) for p, c in titles.items()},
             {p: c / float(n) for p, c in semis_reached.items()})

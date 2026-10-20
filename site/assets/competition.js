@@ -99,15 +99,64 @@
       pl.ko && ["p_ko", "Knockouts", "Finish in the top 24: reach the knockout rounds"],
       pl.drop && ["p_drop", "Relegated", `Finish in the bottom ${pl.drop} (direct relegation; playoffs not counted)`],
     ].filter(Boolean);
+    const xp = rows.some(r => r.xpts != null && r.played);
+    // a chance the arithmetic has already settled: "Sure" or "Out" instead of a percentage
+    const settled = (r, k) => {
+      const s = r.sure || {}, key = { p_win: "title", p_top: "top", p_drop: "down" }[k];
+      if (!key || s[key] == null) return null;
+      if (k === "p_drop") return s.down ? `<b title="Can't climb out of the bottom ${pl.drop} now">Down</b>` : `<span class="muted" title="Can't finish in the bottom ${pl.drop} now">Safe</span>`;
+      return s[key] ? `<b title="Certain, whatever happens in the games left">Sure</b>` : `<span class="muted" title="Can't get there even by winning every game left">Out</span>`;
+    };
+    const cell = (r, k) => settled(r, k) || SP.prob(r[k]);
+    const badge = r => {
+      const s = r.sure || {};
+      if (s.title) return ` <span class="badge sure">${c.status === "finished" ? "Champions" : "Title won"}</span>`;
+      if (s.down) return ` <span class="badge down">Relegated</span>`;
+      if (s.top && pl.top) return ` <span class="badge sure" title="Certain to finish in the top ${pl.top}">Top ${pl.top}</span>`;
+      return "";
+    };
+    const vsExp = r => { const d = r.pts - r.xpts; return `<span class="${Math.abs(d) >= 3 ? (d > 0 ? "ahead" : "behind") : "muted"}">${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(1)}</span>`; };
     return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th>${groups ? "<th>Group</th>" : ""}
-      <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th><th class="num" title="Average final points across simulations">Proj. pts</th>
+      <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th>${xp ? '<th class="num opt" title="Points won minus the points the pre-match chances said to expect. Plus means ahead of expectation (good finishing, goalkeeping or luck).">vs exp.</th>' : ""}<th class="num" title="Average final points across simulations">Proj. pts</th>
       <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num" title="${hint}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
-      ${rows.map((r, i) => `<tr class="${SP.following().has(r.team) ? "mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.teamLink(r.team, c.sport)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
-        <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>
+      ${rows.map((r, i) => `<tr class="${SP.following().has(r.team) ? "mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.teamLink(r.team, c.sport)}${badge(r)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
+        <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>${xp ? `<td class="num opt">${r.played ? vsExp(r) : "–"}</td>` : ""}
         <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
-        ${extra.map(([k]) => `<td class="num">${SP.prob(r[k])}</td>`).join("")}
-        <td class="num">${SP.prob(r.p_win)}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
+        ${extra.map(([k]) => `<td class="num">${cell(r, k)}</td>`).join("")}
+        <td class="num">${cell(r, "p_win")}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
     </tbody></table></div>`;
+  }
+
+  // who's ahead of and behind what their results so far deserved
+  function luckLine() {
+    const rows = c.table.filter(r => r.xpts != null && r.played >= 3);
+    if (rows.length < 4) return "";
+    const by = rows.map(r => [r, r.pts - r.xpts]).sort((a, b) => b[1] - a[1]);
+    const fmt = ([r, d]) => `${SP.esc(r.team)} (${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(1)})`;
+    const ahead = by.filter(x => x[1] >= 2).slice(0, 2), behind = by.filter(x => x[1] <= -2).slice(-2).reverse();
+    if (!ahead.length && !behind.length) return "";
+    return `<p class="small muted" style="margin:8px 4px">Points against expectation, from each game's pre-match chances: ${ahead.length ? `most ahead ${ahead.map(fmt).join(", ")}` : ""}${ahead.length && behind.length ? "; " : ""}${behind.length ? `most behind ${behind.map(fmt).join(", ")}` : ""}. Big gaps tend to shrink as the season goes on.</p>`;
+  }
+
+  // who has the hardest and easiest games left
+  function runInHtml() {
+    const list = c.run_in;
+    if (!list || !list.length) return "";
+    const lo = Math.min(...list.map(x => x.par)), hi = Math.max(...list.map(x => x.par));
+    return `<details class="panel fold"><summary><h2>Run-in</h2><span class="muted small">Who has the hardest games left</span></summary>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th><th class="num">Games left</th><th class="num opt">At home</th>
+        <th class="num" title="Average Elo rating of the teams still to play">Avg opponent</th>
+        <th class="num" title="Points per game a team of this league's average rating would expect from these same fixtures. Lower means harder.">Par pts / game</th></tr></thead><tbody>
+      ${list.map((x, i) => `<tr><td class="muted">${i + 1}</td><td>${SP.teamLink(x.team, c.sport)}</td><td class="num">${x.left}</td><td class="num opt">${x.home}</td>
+        <td class="num">${x.opp}</td><td class="num">${x.par.toFixed(2)}<span class="pbar"><i style="width:${hi > lo ? 15 + 85 * (hi - x.par) / (hi - lo) : 50}%"></i></span></td></tr>`).join("")}
+      </tbody></table></div><p class="small muted">Hardest first. The bar shows difficulty: longer is harder.</p></details>`;
+  }
+
+  // the likeliest pairings for the final, from the same simulations
+  function likelyFinal() {
+    const f = c.likely_final;
+    if (!f || !f.length || c.status === "finished") return "";
+    return `<p class="small likely-final">Likeliest final: ${f.map((x, i) => `${i ? "" : "<b>"}${SP.esc(x.a)} v ${SP.esc(x.b)}${i ? "" : "</b>"} ${SP.prob(x.p)}`).join(" · ")}</p>`;
   }
 
   function seg(p, cls, label) {
@@ -212,7 +261,7 @@
   // download the odds table as a spreadsheet-friendly CSV file
   function downloadCsv() {
     const cols = tennis ? [["player", "Player"], ["rating", "Rating"], ["p_win", "Win title"], ["p_sf", "Reach semis"]]
-      : [["team", "Team"], ["group", "Group"], ["played", "Played"], ["pts", "Points"], ["gd", "Goal difference"], ["proj_pts", "Projected points"],
+      : [["team", "Team"], ["group", "Group"], ["played", "Played"], ["pts", "Points"], ["gd", "Goal difference"], ["xpts", "Expected points so far"], ["proj_pts", "Projected points"],
          ["rating", "Rating"], ["p_top", "Top places"], ["p_ko", "Knockouts"], ["p_drop", "Relegated"], ["p_qualify", "Qualify"], ["p_playoff", "Playoff"], ["p_win", "Win"]];
     const used = cols.filter(([k]) => c.table.some(r => r[k] != null));
     const cell = v => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
@@ -335,6 +384,7 @@
       <p class="sub">${tennis ? SP.surface(c.surface) + " " : ""}${sub} <span class="updated" title="${SP.esc(SP.when(c.updated))}">· updated ${SP.esc(SP.ago(c.updated))}</span></p>
       ${c.stale ? `<div class="notice"><b>Not refreshed in the latest update.</b> ${SP.esc(c.stale_reason || "The data source didn't answer")}, so these are the last good predictions, from ${SP.esc(SP.when(c.updated))}.</div>` : ""}
       ${hero()}
+      ${likelyFinal()}
       <h2>${tennis ? "Title odds over the tournament" : qualifying ? "Chance to qualify over the campaign: the races that moved most" : "Title odds over the season"}</h2>
       <div class="panel">${canChart ? `<div class="chart-box" ${asTable ? 'hidden' : ""}><canvas id="chart" role="img" aria-label="Chance to win over time" aria-describedby="chart-sum"></canvas></div>
         <p class="small chart-sum" id="chart-sum">${chartSummary()}</p>
@@ -343,9 +393,10 @@
         <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button></div>`
         : `<div class="muted">The chart fills in as results come in${c.projected ? ", starting when the groups are drawn" : ""}.</div>`}</div>
       <div class="title-row"><h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>${c.table.length ? '<button class="chip" id="csv" type="button" title="Download this table as a CSV file">Download CSV</button>' : ""}</div>
-      <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}</div>
+      <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}${luckLine()}</div>
       ${swingsHtml()}
       ${whatifHtml()}
+      ${runInHtml()}
       ${positionsHtml()}
       <div class="two">
         <div><div class="title-row"><h2>Coming up</h2>${c.upcoming.length ? '<button class="chip" id="ics" type="button" title="Download these matches, with our chances, for your calendar">Add to calendar</button>' : ""}</div>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>

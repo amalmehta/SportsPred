@@ -74,8 +74,11 @@ def table_from_results(teams, results):
 RATING_SD = 50.0  # how unsure we are of each team's true strength, in Elo points
 
 
-def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0):
+def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0, tiebreak="gd"):
     """Simulate remaining fixtures n times.
+
+    Ties on points go to goal difference, then goals scored ("gd"), or first to the head-to-head
+    record among the teams level on points, points then goal difference ("h2h", as in La Liga and Serie A).
 
     Each simulation first nudges every team's rating by a random amount (sd = rating_sd), so a
     rating is treated as an estimate rather than the truth; without it long-range odds are overconfident.
@@ -90,6 +93,17 @@ def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0
     gd = np.tile(np.array([base[t][2] for t in teams], dtype=float), (n, 1))
     gf = np.tile(np.array([base[t][3] for t in teams], dtype=float), (n, 1))
     noise = rng.normal(0.0, rating_sd, (n, T)) * (mu.gm.slope / 400.0)
+    h2h = tiebreak == "h2h"
+    if h2h:  # points and goal difference each team took off each other team
+        hp, hd = np.zeros((T, T), dtype=np.int16), np.zeros((T, T), dtype=np.int16)
+        for h, a, g1, g2 in results:
+            if h in idx and a in idx:
+                i, j = idx[h], idx[a]
+                hp[i, j] += 3 if g1 > g2 else (1 if g1 == g2 else 0)
+                hp[j, i] += 3 if g2 > g1 else (1 if g1 == g2 else 0)
+                hd[i, j] += g1 - g2
+                hd[j, i] += g2 - g1
+        hp, hd = np.tile(hp, (n, 1, 1)), np.tile(hd, (n, 1, 1))
     tracked = []
     for k, (h, a, neutral) in enumerate(fixtures):
         if h not in idx or a not in idx:
@@ -104,10 +118,20 @@ def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0
         gd[:, j] += ga - gh
         gf[:, i] += gh
         gf[:, j] += ga
+        if h2h:
+            hp[:, i, j] += np.where(gh > ga, 3, np.where(gh == ga, 1, 0)).astype(np.int16)
+            hp[:, j, i] += np.where(ga > gh, 3, np.where(gh == ga, 1, 0)).astype(np.int16)
+            hd[:, i, j] += (gh - ga).astype(np.int16)
+            hd[:, j, i] += (ga - gh).astype(np.int16)
         if len(tracked) < track:
             tracked.append((k, np.where(gh > ga, 0, np.where(gh == ga, 1, 2))))
-    key = pts * 1e7 + (gd + 500) * 1e3 + gf + rng.random((n, T)) * 0.5
-    order = np.argsort(-key, axis=1)
+    luck = rng.random((n, T))
+    if h2h:  # a mini-table of the games between the teams level on points
+        level = pts[:, :, None] == pts[:, None, :]
+        mini_pts, mini_gd = (hp * level).sum(axis=2), (hd * level).sum(axis=2)
+        order = np.lexsort((luck, -gf, -gd, -mini_gd, -mini_pts, -pts), axis=1)
+    else:
+        order = np.lexsort((luck, -gf, -gd, -pts), axis=1)
     if track:
         return order, pts, tracked
     return order, pts
@@ -240,11 +264,11 @@ def match_swings(tracked, champion, fixtures, teams, p_win, min_share=0.02, keep
     return [x for x in out if x["swing"] >= 0.02][:keep]
 
 
-def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None, track=0):
+def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None, track=0, tiebreak="gd"):
     """Domestic league: champion = top of the table; also the chance of a top-`top` or bottom-`bottom` finish.
     With track=k, also says which of the next k games swing the title race most (see match_swings)."""
     rng = np.random.default_rng(seed)
-    res = sim_table(teams, results, fixtures, mu, n, rng, track=track)
+    res = sim_table(teams, results, fixtures, mu, n, rng, track=track, tiebreak=tiebreak)
     order, pts = res[0], res[1]
     p_win = np.bincount(order[:, 0], minlength=len(teams)) / float(n)
     out = {

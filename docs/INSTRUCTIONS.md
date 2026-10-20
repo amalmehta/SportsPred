@@ -62,6 +62,7 @@ This builds `mac/build/SportsPred.app`, a universal app for Apple silicon and In
 | ⌘F | Find a team or player |
 | File → Share… | Share the page (Messages, Mail, AirDrop…) |
 | Help → Send Feedback… | Opens the feedback panel |
+| Help → Keyboard Shortcuts | Every shortcut (or press ? on any page) |
 
 Links that leave the site, such as the GitHub feedback form, open in your default browser. Without an internet connection, the app shows a "Can't reach SportsPred" page with a Try again button. To point the app somewhere else (for a fork), change `SPSiteURL` in `mac/Info.plist`.
 
@@ -77,15 +78,21 @@ python3 -m unittest discover -s tests
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
+- **Settled races:** once arithmetic alone decides a race, league tables say **Sure** or **Out** (and **Safe** or **Down** for relegation) instead of a percentage, with a badge such as "Title won" next to the team.
+- **Points vs expected** (league tables, wider screens): points won minus what each game's pre-match chances were worth. Plus means a team is ahead of its results so far. A line under the table names who's most ahead and behind.
+- **Run-in:** league pages list who has the hardest games left, measured by the points an average side would expect from those fixtures.
+- **Likeliest final:** tennis pages show the likeliest pairings for the final under the favourite.
 - **Odds tables:** **Download CSV** saves any competition's table. Tennis tables show the chance of reaching the quarter-finals, semi-finals and final; leagues have **Every finishing position**, a grid of how likely each team is to end up in each place. Before a big tennis event's draw is out, its odds are projected from the rankings.
-- **Team and player pages:** click any name in a table, in search or under Your teams to see their form (last five results), next match with their chances, chances everywhere, their rating over the last year (and, for tennis players, by court), and their next and recent games.
+- **Team and player pages:** click any name in a table, in search or under Your teams to see where their rating ranks (for players, overall and on each court), their form (last five results), next match with their chances, chances everywhere, their rating over the last year (and, for tennis players, by court), and their next and recent games.
 - **Why these numbers?** Under each upcoming match: both ratings, home advantage, expected goals, a grid of likely scores and the last meetings.
 - **Matches that matter / What if…?** League pages show the games that swing the title race most, and let you pick results for the next games and replay the season in your browser.
+- **How accurate is it?** How It Works shows accuracy over the last year, competition by competition, against a baseline with no skill, plus a calibration chart and how often the favourites won.
 - **Compare any two:** on How It Works, pick two clubs, national teams or players to see the model's chances and likely scores.
-- **Follow teams:** tap ☆ next to any team or player in a competition's table (or in search results). They appear under **Your teams** at the top of the home page, with their chances everywhere. Saved in this browser.
+- **Follow teams:** tap ☆ next to any team or player in a competition's table (or in search results). They appear under **Your teams** at the top of the home page, with their next game and their chances everywhere. Saved in this browser.
 - **Add to calendar:** on a competition page, **Add to calendar** downloads its upcoming matches, with the model's chances in each event, as an `.ics` file for Calendar, Outlook or Google Calendar.
 - **Chart legend:** click a team in the legend to hide or show its line.
-- **Search shortcuts:** press / to jump to search, use ↑ ↓ to move through results, Enter to open, Esc to clear.
+- **Search shortcuts:** press / to jump to search (from any page), use ↑ ↓ to move through results, Enter to open, Esc to clear. Search finds competitions as well as teams and players.
+- **Keyboard shortcuts:** press ? on any page to see them all.
 - **Home page extras:** "Coming up in the next day or so" lists every match across competitions with the model's pick, and "Biggest moves since yesterday" shows whose odds changed most.
 - **Share:** each competition page has a Share button (the share sheet on phones and Safari, otherwise it copies the link). Shared links show a preview card.
 - **On your phone:** open the site in Safari or Chrome and choose **Add to Home Screen**. It opens like an app and shows the last predictions when you're offline.

@@ -9,12 +9,29 @@
   SP.header(t.sport);
   document.title = `${t.name} · SportsPred`;
   SP.footer();
-  let chart, surfaces = null;
-  if (tennis) {  // overall and per-surface ratings, from the compare tool's ratings file
-    try {
-      const R = await SP.json("data/ratings.json");
-      surfaces = ((R.atp || {}).players || {})[t.name] || ((R.wta || {}).players || {})[t.name] || null;
-    } catch (e) { surfaces = null; }
+  let chart, surfaces = null, ranks = null;
+  // where this rating sits among everyone we rate (and, for players, on each court)
+  const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+  const rankOf = (mine, all) => 1 + all.filter(v => v > mine).length;
+  try {
+    const R = await SP.json("data/ratings.json");
+    if (tennis) {  // overall and per-surface ratings, from the compare tool's ratings file
+      const tour = ((R.atp || {}).players || {})[t.name] ? "atp" : ((R.wta || {}).players || {})[t.name] ? "wta" : null;
+      if (tour) {
+        const all = Object.values(R[tour].players);
+        surfaces = R[tour].players[t.name];
+        ranks = { tour: tour.toUpperCase(), of: all.length, at: surfaces.map((v, i) => rankOf(v, all.map(x => x[i]))) };
+      }
+    } else {
+      const set = ((R[t.part === "international" ? "international" : "soccer"] || {}).teams) || {};
+      if (set[t.name] != null) ranks = { of: Object.keys(set).length, at: [rankOf(set[t.name], Object.values(set))] };
+    }
+  } catch (e) { surfaces = ranks = null; }
+  function rankText() {
+    if (!ranks) return "";
+    if (tennis) return ` · <b>${ordinal(ranks.at[0])}</b> in the ${ranks.tour} by our ratings`;
+    const of = `of the ${ranks.of.toLocaleString()} ${t.part === "international" ? "national teams in current competitions" : "clubs we rate"}`;
+    return ranks.at[0] === 1 ? ` · <b>top-rated</b> ${of}` : ` · <b>${ordinal(ranks.at[0])}</b> ${of}`;
   }
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
@@ -80,9 +97,10 @@
   function surfaceTiles() {
     if (!surfaces) return "";
     const [o, h, c, g] = surfaces;
-    const tile = (label, v, cls) => `<div class="stat"><b>${v}</b><span>${cls ? SP.surface(cls) : label}</span></div>`;
-    return `<h2>Ratings by court</h2><div class="stats">${tile("Overall", o)}${tile("", h, "hard")}${tile("", c, "clay")}${tile("", g, "grass")}</div>
-      <p class="small muted">Each court has its own rating from matches on that surface only; predictions blend it with the overall rating.</p>`;
+    const rank = i => ranks ? ` <span class="rank">${ordinal(ranks.at[i])}</span>` : "";
+    const tile = (label, v, cls, i) => `<div class="stat"><b>${v}${rank(i)}</b><span>${cls ? SP.surface(cls) : label}</span></div>`;
+    return `<h2>Ratings by court</h2><div class="stats">${tile("Overall", o, "", 0)}${tile("", h, "hard", 1)}${tile("", c, "clay", 2)}${tile("", g, "grass", 3)}</div>
+      <p class="small muted">Each court has its own rating from matches on that surface only; predictions blend it with the overall rating.${ranks ? ` Ranks are among the top ${ranks.of} ${ranks.tour} players by our overall rating.` : ""}</p>`;
   }
 
   function render() {
@@ -91,7 +109,7 @@
     page.innerHTML = `
       <p class="small"><a href="index.html?sport=${t.sport}">← All ${tennis ? "tennis" : "soccer"}</a></p>
       <div class="title-row"><h1>${SP.flag(t.flag)}${SP.esc(t.name)} ${SP.starButton(t.name)}</h1></div>
-      <p class="sub">${tennis ? "Tennis player" : "Soccer team"}${r.length ? ` · rating <b>${r[r.length - 1][1]}</b>` : ""}</p>
+      <p class="sub">${tennis ? "Tennis player" : "Soccer team"}${r.length ? ` · rating <b>${r[r.length - 1][1]}</b>` : ""}${rankText()}</p>
       ${form()}
       ${nextUp()}
       <h2>Chances</h2><div class="movers">${t.comps.map(compRow).join("")}</div>

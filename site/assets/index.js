@@ -12,7 +12,7 @@
   SP.footer(index.updated);
   let digest = { matches: [], movers: [] };
   try { digest = await SP.json("data/today.json"); } catch (e) { /* optional */ }
-  await SP.loadTeams();
+  const teamFiles = await SP.loadTeams();
   let allMatches = false;
   let people = null;
   const fold = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -53,14 +53,34 @@
 
   // today's matches everywhere, and whose odds moved most since the day before
   // teams and players you follow (stars on competition pages), with their chances everywhere
+  // each followed team's next game, from its team page file (fetched once, then cached here)
+  const nextGame = {};
+  function loadNext(mine) {
+    const want = mine.filter(p => !(p.n in nextGame)).slice(0, 12);
+    if (!want.length) return;
+    want.forEach(p => { nextGame[p.n] = null; });
+    Promise.all(want.map(p => {
+      const fid = teamFiles[p.n + "|" + (p.in[0] || {}).sport];
+      return fid ? SP.json(`data/teams/${encodeURIComponent(fid)}.json`).then(t => { nextGame[p.n] = (t.upcoming || [])[0] || null; }).catch(() => {}) : null;
+    })).then(render);
+  }
+  function nextLine(name) {
+    const m = nextGame[name];
+    if (!m) return "";
+    const tennis = m.a != null, first = tennis ? m.a === name : m.home === name;
+    const opp = tennis ? (first ? m.b : m.a) : (first ? m.away : m.home);
+    const win = tennis ? (first ? m.p : 1 - m.p) : (first ? m.p[0] : m.p[2]);
+    return `<span class="small next-game">Next: ${tennis ? "v" : first ? "v" : "at"} ${SP.esc(opp)} · ${SP.esc(SP.when(m.date))} · <b>${SP.prob(win)}</b> to win</span>`;
+  }
   function yourTeams() {
     const follow = SP.following();
     if (!follow.size) return "";
     if (!people) { loadPeople().then(render); return ""; }
     const mine = people.filter(p => follow.has(p.n));
     if (!mine.length) return "";
+    loadNext(mine);
     return `<h2>Your teams</h2><div class="movers">${mine.map(p => `<div class="mover">${SP.starButton(p.n)}
-      <span><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)}</b></span><span class="small">${p.in.map(e =>
+      <span><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)}</b>${nextLine(p.n)}</span><span class="small">${p.in.map(e =>
         `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)}: ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join(" · ")}</span></div>`).join("")}</div>`;
   }
 
@@ -148,11 +168,16 @@
     active = -1;
     if (q.length < 2) { found.hidden = true; return; }
     await loadPeople();
+    const starts = k => (k.startsWith(q) || k.includes(" " + q) ? 0 : 1);
+    const comps = index.competitions.map(c => Object.assign({ key: fold([c.name, c.country, c.tour].filter(Boolean).join(" ")) }, c))
+      .filter(c => c.key.includes(q)).sort((a, b) => starts(a.key) - starts(b.key) || a.name.localeCompare(b.name)).slice(0, 4);
     const hits = people.filter(p => p.key.includes(q))
-      .sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || a.n.localeCompare(b.n)).slice(0, 12);
-    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)} ${SP.starButton(p.n)}</b>${p.in.map(e =>
+      .sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || a.n.localeCompare(b.n)).slice(0, 12 - comps.length);
+    const compHit = c => `<div class="hit"><b><a href="competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}">${SP.esc(c.name)}${c.tour && !c.name.includes(c.tour) ? " · " + SP.esc(c.tour) : ""}</a></b>
+      <span class="muted small">${c.status === "finished" ? `Finished${c.champion ? " · won by " + SP.esc(c.champion) : ""}` : c.favourite ? `Favourite: ${SP.esc(c.favourite.name)} ${SP.prob(c.favourite.p)}` : "Odds once the draw is out"}</span></div>`;
+    found.innerHTML = comps.length || hits.length ? comps.map(compHit).join("") + hits.map(p => `<div class="hit"><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)} ${SP.starButton(p.n)}</b>${p.in.map(e =>
       `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)} · ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join("")}</div>`).join("")
-      : `<div class="none">No team or player called “${SP.esc(find.value.trim())}” in the current competitions.</div>`;
+      : `<div class="none">No team, player or competition called “${SP.esc(find.value.trim())}” right now.</div>`;
     found.hidden = false;
   }
   find.addEventListener("input", search);
