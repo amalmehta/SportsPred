@@ -157,11 +157,11 @@ function calibrationChart(m) {
     }
     const x = R[who], gap = ra + (venue === "home" ? x.hfa : 0) - rb;
     const lh = x.base * Math.exp(x.slope * gap / 400), la = x.base * Math.exp(-x.slope * gap / 400);
-    const [h, d, aw] = SP.outcomeProbs(lh, la);
+    const [h, d, aw] = SP.outcomeProbs(lh, la, x.rho || 0);
     out.innerHTML = `<p>Ratings: ${SP.esc(a)} <b>${ra}</b>, ${SP.esc(b)} <b>${rb}</b>${venue === "home" ? ` (+${Math.round(x.hfa)} for home)` : ""}. Expected goals: <b>${lh.toFixed(2)}</b> to <b>${la.toFixed(2)}</b>.</p>
       <div class="split" style="height:26px">${[[h, "h", a + " win"], [d, "d", "Draw"], [aw, "a", b + " win"]].map(([v, cls, n]) => `<div class="${cls}" style="flex:${v * 100} 1 0" title="${SP.esc(n)}">${v >= 0.12 ? SP.prob(v) : ""}</div>`).join("")}</div>
       <p class="small muted">${SP.esc(a)} win ${SP.prob(h)} · draw ${SP.prob(d)} · ${SP.esc(b)} win ${SP.prob(aw)}</p>
-      ${SP.scoreGridHtml(lh, la, a, b)}`;
+      ${SP.scoreGridHtml(lh, la, a, b, x.rho || 0)}`;
   }
   const seg = (id, set) => $(id).addEventListener("click", e => {
     const btn = e.target.closest("button"); if (!btn) return;

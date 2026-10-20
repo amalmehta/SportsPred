@@ -204,6 +204,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
         "history": {"dates": series_days,
                     "series": [{"team": players.get(p, p), "p": [round(s.get(p, 0.0), 4) for s in series]} for p in top]},
         "favourite": {"name": fav["player"], "p": fav["p_win"]} if fav else None,
+        "second": {"name": rows[1]["player"], "p": rows[1]["p_win"]} if fav and len(rows) > 1 and rows[1]["p_win"] > 0 else None,
         "likely_final": likely_final,
         "next_match": upcoming[0]["date"] if upcoming else ev["start"],
     }

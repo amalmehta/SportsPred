@@ -24,11 +24,26 @@ def gd_multiplier(gd):
     return (11.0 + gd) / 8.0
 
 
-class GoalsModel:
-    """log(goals) = base +/- slope * (rating gap / 400)."""
+def low_score_factors(lh, la, rho):
+    """Dixon-Coles: independent Poisson goals slightly miss how often games end 0-0, 1-0, 0-1 and 1-1.
+    These factors scale those four scores (rho < 0 means more 0-0 and 1-1, fewer 1-0 and 0-1)."""
+    return {(0, 0): 1 - lh * la * rho, (0, 1): 1 + lh * rho, (1, 0): 1 + la * rho, (1, 1): 1 - rho + 0 * lh}
 
-    def __init__(self, base=math.log(1.35), slope=0.85):
-        self.base, self.slope = base, slope
+
+def score_grid(lh, la, rho=0.0, n=MAX_GOALS):
+    """P(home scores i, away scores j), with the low-score correction; sums to 1."""
+    g = np.outer(poisson_pmf(lh, n), poisson_pmf(la, n))
+    if rho:
+        for (i, j), f in low_score_factors(lh, la, rho).items():
+            g[i, j] *= f
+    return g / g.sum()
+
+
+class GoalsModel:
+    """log(goals) = base +/- slope * (rating gap / 400); goals Poisson with a low-score correction (rho)."""
+
+    def __init__(self, base=math.log(1.35), slope=0.85, rho=0.0):
+        self.base, self.slope, self.rho = base, slope, rho
 
     def lambdas(self, gap):
         """gap = home rating + home advantage - away rating (Elo points)."""
@@ -37,8 +52,7 @@ class GoalsModel:
 
     def outcome_probs(self, gap):
         lh, la = self.lambdas(gap)
-        ph, pa = poisson_pmf(lh), poisson_pmf(la)
-        grid = np.outer(ph, pa)
+        grid = score_grid(lh, la, self.rho)
         home = float(np.tril(grid, -1).sum())
         draw = float(np.trace(grid))
         away = float(np.triu(grid, 1).sum())
@@ -172,3 +186,29 @@ def by_competition(rows, names):
                     "base_log_loss": round(base["log_loss"], 4),
                     "skill": round(1 - ours["log_loss"] / base["log_loss"], 4)})
     return out
+
+
+def fit_low_score(gm, samples, grid=np.arange(-0.20, 0.0501, 0.01)):
+    """Pick the Dixon-Coles rho that best explains the exact scores, for a goals model already fitted.
+    samples: (gap, hg, ag). Only the four low scores and the normaliser change with rho, so this is quick."""
+    if not samples:
+        return 0.0
+    gaps = np.array([s[0] for s in samples]) / 400.0
+    hg = np.array([s[1] for s in samples])
+    ag = np.array([s[2] for s in samples])
+    lh, la = np.exp(gm.base + gm.slope * gaps), np.exp(gm.base - gm.slope * gaps)
+    p0h, p0a = np.exp(-lh), np.exp(-la)
+    cells = {(0, 0): p0h * p0a, (0, 1): p0h * p0a * la, (1, 0): p0h * lh * p0a, (1, 1): p0h * lh * p0a * la}
+    best = (None, 0.0)
+    for rho in grid:
+        f = low_score_factors(lh, la, rho)
+        if any((v <= 0).any() for v in f.values()):
+            continue
+        z = 1 + sum(cells[k] * (f[k] - 1) for k in cells)
+        ll = -np.log(z).sum()
+        for (i, j), v in f.items():
+            hit = (hg == i) & (ag == j)
+            ll += np.log(v[hit]).sum()
+        if best[0] is None or ll > best[0]:
+            best = (ll, float(rho))
+    return round(best[1], 3)

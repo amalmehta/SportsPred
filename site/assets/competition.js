@@ -98,11 +98,15 @@
       pl.top && ["p_top", `Top ${pl.top}`, c.format === "league" ? `Finish in the top ${pl.top} (Champions League places)` : "Finish in the top 8: straight to the round of 16"],
       pl.ko && ["p_ko", "Knockouts", "Finish in the top 24: reach the knockout rounds"],
       pl.drop && ["p_drop", "Relegated", `Finish in the bottom ${pl.drop} (direct relegation; playoffs not counted)`],
+      rows.some(r => r.p_adv != null) && c.status !== "finished" && ["p_adv", "Out of group", "Finish in a qualifying place in the group (including the best third-placed teams where they go through)"],
     ].filter(Boolean);
+    // UEFA: how far each club goes, from the same simulations
+    const rounds = rows.some(r => r.reach) && c.status !== "finished"
+      ? [["r16", "Last 16", "opt"], ["qf", "Quarters", ""], ["sf", "Semis", ""], ["f", "Final", "opt"]] : [];
     const xp = rows.some(r => r.xpts != null && r.played);
     // a chance the arithmetic has already settled: "Sure" or "Out" instead of a percentage
     const settled = (r, k) => {
-      const s = r.sure || {}, key = { p_win: "title", p_top: "top", p_drop: "down" }[k];
+      const s = r.sure || {}, key = { p_win: "title", p_top: "top", p_drop: "down", p_ko: "ko" }[k];
       if (!key || s[key] == null) return null;
       if (k === "p_drop") return s.down ? `<b title="Can't climb out of the bottom ${pl.drop} now">Down</b>` : `<span class="muted" title="Can't finish in the bottom ${pl.drop} now">Safe</span>`;
       return s[key] ? `<b title="Certain, whatever happens in the games left">Sure</b>` : `<span class="muted" title="Can't get there even by winning every game left">Out</span>`;
@@ -115,14 +119,16 @@
       if (s.top && pl.top) return ` <span class="badge sure" title="Certain to finish in the top ${pl.top}">Top ${pl.top}</span>`;
       return "";
     };
-    const vsExp = r => { const d = r.pts - r.xpts; return `<span class="${Math.abs(d) >= 3 ? (d > 0 ? "ahead" : "behind") : "muted"}">${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(1)}</span>`; };
+    const vsExp = r => { const d = r.pts - r.xpts; return `<span class="${Math.abs(d) >= 3 ? (d > 0 ? "ahead" : "behind") : ""}">${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(1)}</span>`; };
     return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th>${groups ? "<th>Group</th>" : ""}
       <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th>${xp ? '<th class="num opt" title="Points won minus the points the pre-match chances said to expect. Plus means ahead of expectation (good finishing, goalkeeping or luck).">vs exp.</th>' : ""}<th class="num" title="Average final points across simulations">Proj. pts</th>
-      <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num" title="${hint}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
+      <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num${rounds.length ? " opt" : ""}" title="${hint}">${label}</th>`).join("")}
+      ${rounds.map(([, label, cls]) => `<th class="num ${cls}" title="Chance to reach the ${label.toLowerCase()}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
       ${rows.map((r, i) => `<tr class="${SP.following().has(r.team) ? "mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.teamLink(r.team, c.sport)}${badge(r)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
         <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>${xp ? `<td class="num opt">${r.played ? vsExp(r) : "–"}</td>` : ""}
         <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
-        ${extra.map(([k]) => `<td class="num">${cell(r, k)}</td>`).join("")}
+        ${extra.map(([k]) => `<td class="num${rounds.length ? " opt" : ""}">${cell(r, k)}</td>`).join("")}
+        ${rounds.map(([k, , cls]) => `<td class="num ${cls}">${SP.prob((r.reach || {})[k] || 0)}</td>`).join("")}
         <td class="num">${cell(r, "p_win")}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
     </tbody></table></div>`;
   }
@@ -233,7 +239,7 @@
     return `<details><summary>Why these numbers?</summary><div class="why">
       <div>Ratings: ${SP.esc(m.home)} <b>${m.r[0]}</b>, ${SP.esc(m.away)} <b>${m.r[1]}</b>${m.neutral ? " (neutral ground)" : `, plus ${Math.round(c.hfa || 0)} for playing at home`}.
         A gap of ${Math.round(Math.abs(gap))} points in ${SP.esc(gap >= 0 ? m.home : m.away)}'s favour means about <b>${m.xg[0]}</b> goals to <b>${m.xg[1]}</b>.</div>
-      ${SP.scoreGridHtml(m.xg[0], m.xg[1], m.home, m.away)}
+      ${SP.scoreGridHtml(m.xg[0], m.xg[1], m.home, m.away, c.rho || 0)}
       ${h2hList(m.h2h, x => `${SP.esc(x.home)} ${x.hg}–${x.ag} ${SP.esc(x.away)}`)}
       <div class="small muted"><a href="how.html">How the model works</a></div></div></details>`;
   }
@@ -262,13 +268,14 @@
   function downloadCsv() {
     const cols = tennis ? [["player", "Player"], ["rating", "Rating"], ["p_win", "Win title"], ["p_sf", "Reach semis"]]
       : [["team", "Team"], ["group", "Group"], ["played", "Played"], ["pts", "Points"], ["gd", "Goal difference"], ["xpts", "Expected points so far"], ["proj_pts", "Projected points"],
-         ["rating", "Rating"], ["p_top", "Top places"], ["p_ko", "Knockouts"], ["p_drop", "Relegated"], ["p_qualify", "Qualify"], ["p_playoff", "Playoff"], ["p_win", "Win"]];
+         ["rating", "Rating"], ["p_top", "Top places"], ["p_ko", "Knockouts"], ["p_drop", "Relegated"], ["p_adv", "Out of the group"], ["p_qualify", "Qualify"], ["p_playoff", "Playoff"], ["p_win", "Win"]];
     const used = cols.filter(([k]) => c.table.some(r => r[k] != null));
     const cell = v => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-    const reach = tennis && c.table.some(r => r.reach);
-    const head = used.map(([, l]) => l).concat(reach ? ["Reach quarters", "Reach semis", "Reach final"] : []);
+    const reach = c.table.some(r => r.reach), keys = tennis ? ["qf", "sf", "f"] : ["r16", "qf", "sf", "f"];
+    const names = { r16: "Reach last 16", qf: "Reach quarters", sf: "Reach semis", f: "Reach final" };
+    const head = used.map(([, l]) => l).concat(reach ? keys.map(k => names[k]) : []);
     const lines = [head.join(",")].concat(c.table.map(r => used.map(([k]) => cell(r[k]))
-      .concat(reach ? ["qf", "sf", "f"].map(k => cell((r.reach || {})[k])) : []).join(",")));
+      .concat(reach ? keys.map(k => cell((r.reach || {})[k])) : []).join(",")));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
     a.download = `${c.name} odds ${(c.updated || "").slice(0, 10)}.csv`;
@@ -311,18 +318,38 @@
     const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
     const poissonDraw = lam => { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; };
     const win = new Array(T).fill(0), top = new Array(T).fill(0), drop = new Array(T).fill(0);
+    // head-to-head leagues (Spain, Italy): points and goal difference between every pair, as in the main model
+    const h2h = w.tiebreak === "h2h" && w.played;
+    const grid = () => Array.from({ length: T }, () => new Array(T).fill(0));
+    const hp0 = grid(), hd0 = grid();
+    const meet = (hp, hd, i, j, gh, ga) => {
+      hp[i][j] += gh > ga ? 3 : gh === ga ? 1 : 0; hp[j][i] += ga > gh ? 3 : gh === ga ? 1 : 0;
+      hd[i][j] += gh - ga; hd[j][i] += ga - gh;
+    };
+    if (h2h) w.played.forEach(([i, j, gh, ga]) => meet(hp0, hd0, i, j, gh, ga));
     for (let s = 0; s < N; s++) {
       const noise = Array.from({ length: T }, () => gauss() * w.noise);  // ratings are estimates, as in the main model
       const pts = w.base.map(b => b[0]), gd = w.base.map(b => b[1]), gf = w.base.map(b => b[2]);
+      const hp = h2h ? hp0.map(r => r.slice()) : null, hd = h2h ? hd0.map(r => r.slice()) : null;
       w.fixtures.forEach((f, k) => {
         const [i, j, lh, la] = f;
         let gh, ga;
         if (picks[k] != null && picks[k] >= 0) { [gh, ga] = [[1, 0], [0, 0], [0, 1]][picks[k]]; }
-        else { const sh = Math.exp(noise[i] - noise[j]); gh = poissonDraw(lh * sh); ga = poissonDraw(la / sh); }
+        else {  // Poisson goals with the low-score correction, by rejection (as in the pipeline)
+          const sh = Math.exp(noise[i] - noise[j]), a = lh * sh, b = la / sh;
+          const top = Math.max(1, ...[[0, 0], [0, 1], [1, 0], [1, 1]].map(([x, y]) => SP.lowScore(a, b, w.rho, x, y)));
+          do { gh = poissonDraw(a); ga = poissonDraw(b); } while (Math.random() * top > SP.lowScore(a, b, w.rho, gh, ga));
+        }
         pts[i] += gh > ga ? 3 : gh === ga ? 1 : 0; pts[j] += ga > gh ? 3 : gh === ga ? 1 : 0;
         gd[i] += gh - ga; gd[j] += ga - gh; gf[i] += gh; gf[j] += ga;
+        if (h2h) meet(hp, hd, i, j, gh, ga);
       });
-      const order = [...Array(T).keys()].sort((a, b) => (pts[b] - pts[a]) || (gd[b] - gd[a]) || (gf[b] - gf[a]) || (Math.random() - 0.5));
+      // a mini-table of the games between teams level on points
+      const miniP = new Array(T).fill(0), miniD = new Array(T).fill(0);
+      if (h2h) for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) if (i !== j && pts[i] === pts[j]) { miniP[i] += hp[i][j]; miniD[i] += hd[i][j]; }
+      const luck = Array.from({ length: T }, Math.random);
+      const order = [...Array(T).keys()].sort((a, b) => (pts[b] - pts[a]) || (miniP[b] - miniP[a]) || (miniD[b] - miniD[a])
+        || (gd[b] - gd[a]) || (gf[b] - gf[a]) || (luck[a] - luck[b]));
       win[order[0]]++;
       order.slice(0, w.top || 0).forEach(i => top[i]++);
       if (w.drop) order.slice(T - w.drop).forEach(i => drop[i]++);
@@ -334,7 +361,7 @@
     const cell = (v, was) => `${SP.prob(v)}${was != null && Math.abs(v - was) >= 0.01 ? ` <span class="muted small">(${v > was ? "▲" : "▼"} from ${SP.prob(was)})</span>` : ""}`;
     whatifResult = `<div class="table-wrap"><table><thead><tr><th>Team</th><th class="num">Win title</th>${w.top ? `<th class="num">Top ${w.top}</th>` : ""}${w.drop ? '<th class="num">Relegated</th>' : ""}</tr></thead><tbody>
       ${show.map(r => `<tr><td>${SP.esc(r.t)}</td><td class="num">${cell(r.win, r.was.p_win)}</td>${w.top ? `<td class="num">${cell(r.top, r.was.p_top)}</td>` : ""}${w.drop ? `<td class="num">${cell(r.drop, r.was.p_drop)}</td>` : ""}</tr>`).join("")}
-      </tbody></table></div><p class="small muted">Picked results count as 1–0 or 0–0. Brackets show the site's current odds.</p>`;
+      </tbody></table></div><p class="small muted">Picked results count as 1–0 or 0–0. Ties on points are split ${w.tiebreak === "h2h" ? "by the games between the teams level on points, then goal difference" : "by goal difference, then goals scored"}, as in the league. Brackets show the site's current odds.</p>`;
     document.getElementById("wi-out").innerHTML = whatifResult;
   }
 
@@ -355,15 +382,20 @@
 
   // the games that swing the title race most, from the simulations split by each game's result
   function swingsHtml() {
-    const list = (c.swings || []).filter(x => x.date).slice(0, 3);
+    return swingList(c.swings, "Matches that matter", "Title chances after each possible result, from the same 10,000 simulated seasons.")
+      + swingList(c.drop_swings, "Matches that matter at the bottom", "Chances of going down after each possible result.", "chance of going down");
+  }
+  function swingList(all, title, note, what) {
+    const list = (all || []).filter(x => x.date).slice(0, 3);
     if (!list.length) return "";
-    return `<h2>Matches that matter</h2><p class="small muted" style="margin:-6px 0 10px">Title chances after each possible result, from the same 10,000 simulated seasons.</p>
+    return `<h2>${title}</h2><p class="small muted" style="margin:-6px 0 10px">${note}</p>
       <div class="matches">${list.map(x => {
       const lines = Object.entries(x.if).map(([team, v]) => {
-        const words = team === x.home ? ["win", "draw", "lose"] : team === x.away ? ["lose", "draw", "win"]
-          : [`${x.home} win`, "draw", `${x.away} win`];
+        const own = team === x.home ? ["win", "draw", "lose"] : team === x.away ? ["lose", "draw", "win"] : null;
+        const words = what ? (own ? own.map(w => `if they ${w}`) : [`if ${x.home} win`, "if it's a draw", `if ${x.away} win`])
+          : own || [`${x.home} win`, "draw", `${x.away} win`];
         const parts = [0, 1, 2].filter(i => v[i] != null).map(i => `${SP.esc(words[i])} <b>${SP.prob(v[i])}</b>`);
-        return `<div><b>${SP.esc(team)}</b>: ${parts.join(" · ")}</div>`;
+        return `<div><b>${SP.esc(team)}</b>${what ? ", " + what : ""}: ${parts.join(" · ")}</div>`;
       }).join("");
       return `<div class="match"><div class="when">${SP.esc(SP.when(x.date))}</div>
         <div class="teams"><span>${SP.esc(x.home)} v ${SP.esc(x.away)}</span><span class="muted small">moves the race up to ${Math.round(x.swing * 100)} pts</span></div>

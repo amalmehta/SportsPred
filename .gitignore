@@ -6,3 +6,4 @@ site/data/
 *.tmp
 data/histories/
 site/sitemap.xml
+site/feed.xml

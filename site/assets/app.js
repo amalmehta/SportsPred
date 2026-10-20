@@ -257,7 +257,7 @@ const SP = (() => {
     const f = document.getElementById("foot");
     if (!f) return;
     f.innerHTML = `<div class="wrap">Predictions refresh about every hour from public results${updated ? ` · updated <span title="${esc(when(updated))}">${esc(ago(updated))}</span>` : ""} ·
-      <a href="how.html">How it works</a> · <a href="${REPO}">Source</a>. For fun and learning, not betting advice.</div>`;
+      <a href="how.html">How it works</a> · <a href="feed.xml" title="Upsets and big odds moves, for feed readers">Feed</a> · <a href="${REPO}">Source</a>. For fun and learning, not betting advice.</div>`;
     // the hourly update can be held up (GitHub delays scheduled runs); say so instead of looking current
     const hours = (Date.now() - parseIso(updated)) / 3600000;
     const main = document.querySelector("main");
@@ -299,22 +299,29 @@ const SP = (() => {
 
   /* ---------- the maths behind a soccer match, for the detail panels and the compare tool ---------- */
   function poisson(lam, k) { let p = Math.exp(-lam); for (let i = 1; i <= k; i++) p *= lam / i; return p; }
-  function scoreGrid(lh, la, max = 6) {
-    const grid = [];
-    for (let h = 0; h < max; h++) { grid.push([]); for (let a = 0; a < max; a++) grid[h].push(poisson(lh, h) * poisson(la, a)); }
-    return grid;
+  // Dixon-Coles: independent goals slightly miss how often games end 0-0, 1-0, 0-1 and 1-1 (as in the pipeline)
+  function lowScore(lh, la, rho, h, a) {
+    if (!rho || h > 1 || a > 1) return 1;
+    return h === 0 && a === 0 ? 1 - lh * la * rho : h === 0 ? 1 + lh * rho : a === 0 ? 1 + la * rho : 1 - rho;
   }
-  function outcomeProbs(lh, la) {
+  // chance of each score, over a 12 x 12 grid that sums to 1; `max` trims what's returned
+  function scoreGrid(lh, la, max = 6, rho = 0) {
+    const full = [];
+    let sum = 0;
+    for (let h = 0; h < 12; h++) { full.push([]); for (let a = 0; a < 12; a++) { const p = poisson(lh, h) * poisson(la, a) * lowScore(lh, la, rho, h, a); full[h].push(p); sum += p; } }
+    return full.slice(0, max).map(row => row.slice(0, max).map(p => p / sum));
+  }
+  function outcomeProbs(lh, la, rho = 0) {
+    const g = scoreGrid(lh, la, 12, rho);
     let h = 0, d = 0, a = 0;
-    for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) { const p = poisson(lh, i) * poisson(la, j); if (i > j) h += p; else if (i === j) d += p; else a += p; }
-    const s = h + d + a;
-    return [h / s, d / s, a / s];
+    g.forEach((row, i) => row.forEach((p, j) => { if (i > j) h += p; else if (i === j) d += p; else a += p; }));
+    return [h, d, a];
   }
   // a small heatmap of likely scores (one hue, light to dark), with the numbers written in each cell
-  function scoreGridHtml(lh, la, home, away) {
-    const g = scoreGrid(lh, la), top = Math.max(...g.flat());
+  function scoreGridHtml(lh, la, home, away, rho = 0) {
+    const g = scoreGrid(lh, la, 6, rho), top = Math.max(...g.flat());
     return `<table class="grid-scores" aria-label="Chance of each score"><caption class="small muted">Chance of each score (${esc(home)} down, ${esc(away)} across)</caption>
-      <thead><tr><th></th>${g[0].map((_, a) => `<th>${a}</th>`).join("")}</tr></thead><tbody>
+      <thead><tr><th><span class="sr">${esc(home)} goals down, ${esc(away)} goals across</span></th>${g[0].map((_, a) => `<th>${a}</th>`).join("")}</tr></thead><tbody>
       ${g.map((row, h) => `<tr><th>${h}</th>${row.map(p => { const t = p / top;
         return `<td style="--t:${t.toFixed(3)}" title="${h}–${row.indexOf(p)}">${p >= 0.005 ? Math.round(p * 100) + "%" : ""}</td>`; }).join("")}</tr>`).join("")}
       </tbody></table>`;
@@ -341,5 +348,5 @@ const SP = (() => {
 
   return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO,
     happenedProb, verdict, verdictBadge,
-    following, toggleFollow, starButton, matchState, flag, surface, ago, loadTeams, teamLink, scoreGrid, scoreGridHtml, outcomeProbs };
+    following, toggleFollow, starButton, matchState, flag, surface, ago, loadTeams, teamLink, scoreGrid, scoreGridHtml, outcomeProbs, lowScore };
 })();

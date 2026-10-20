@@ -177,7 +177,8 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .fb-tab:hover { opacity: 1; color: var(--text); }
 .fb-panel textarea, .fb-panel select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .fb-panel textarea { min-height: 110px; resize: vertical; }
-.btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+.btn { background: #256abf; color: #ffffff;  /* 5.3:1 with white in both themes */
+  border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
 
 footer { border-top: 1px solid var(--border); color: var(--text-3); font-size: 13px; padding: 18px 0 40px; }
 
@@ -364,3 +365,5 @@ table.keys td:last-child { white-space: normal; }
 #shortcuts { width: min(520px, calc(100vw - 32px)); }
 table.keys kbd { font-size: 12px; padding: 1px 6px; color: var(--text); }
 .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--link); text-decoration: underline; cursor: pointer; }
+.card .second { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); margin-top: -4px; }
+.card .second span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

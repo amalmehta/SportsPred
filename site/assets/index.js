@@ -37,7 +37,7 @@
       body = `<div class="fav"><span class="who">🏆 ${SP.esc(c.champion || c.favourite.name)}</span><span class="muted small">Champion</span></div>`;
     } else if (c.favourite) {
       body = `<div class="fav"><span class="who">${SP.esc(c.favourite.name)}</span><span class="pct">${SP.prob(c.favourite.p)}</span></div>
-        ${c.format === "qualifying" ? `<div class="muted small" style="margin-top:-8px">Likeliest to qualify</div>` : ""}<div class="meter" title="Chance to win"><i style="width:${Math.max(2, c.favourite.p * 100)}%"></i></div>${c.projected ? `<div class="muted small">Projected field · draw not out yet</div>` : ""}`;
+        ${c.format === "qualifying" ? `<div class="muted small" style="margin-top:-8px">Likeliest to qualify</div>` : ""}<div class="meter" title="Chance to win"><i style="width:${Math.max(2, c.favourite.p * 100)}%"></i></div>${c.second ? `<div class="second small"><span>${SP.esc(c.second.name)}</span><span>${SP.prob(c.second.p)}</span></div>` : ""}${c.projected ? `<div class="muted small">Projected field · draw not out yet</div>` : ""}`;
     } else {
       body = `<div class="muted small">Odds appear once the draw is out.</div>`;
     }

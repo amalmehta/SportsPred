@@ -4,7 +4,7 @@ from collections import OrderedDict
 
 import numpy as np
 
-from .soccer_model import MAX_GOALS, poisson_pmf
+from .soccer_model import MAX_GOALS, low_score_factors, score_grid
 
 
 class Matchups:
@@ -12,7 +12,7 @@ class Matchups:
 
     def __init__(self, ratings, goals_model, hfa, default_rating=1400.0):
         self.r, self.gm, self.hfa, self.default = ratings, goals_model, hfa, default_rating
-        self._tie = {}
+        self._tie, self._diff = {}, {}
 
     def rating(self, t):
         return self.r.get(t, self.default)
@@ -26,8 +26,14 @@ class Matchups:
         return self.gm.outcome_probs(gap)
 
     def _diff_pmf(self, home, away, neutral):
-        lh, la = self.lambdas(home, away, neutral)
-        return np.convolve(poisson_pmf(lh), poisson_pmf(la)[::-1])  # index k -> diff k-(MAX-1)
+        key = (home, away, neutral)
+        if key not in self._diff:
+            lh, la = self.lambdas(home, away, neutral)
+            g = score_grid(lh, la, self.gm.rho)
+            n = g.shape[0]
+            d = np.subtract.outer(np.arange(n), np.arange(n)) + n - 1  # home minus away, shifted to 0..2n-2
+            self._diff[key] = np.bincount(d.ravel(), weights=g.ravel(), minlength=2 * n - 1)  # index k -> diff k-(n-1)
+        return self._diff[key]
 
     def tie_prob(self, a, b, legs, agg=0):
         """P(a goes through). legs: remaining (home, away, neutral); agg: a's lead from legs already played.
@@ -71,6 +77,37 @@ def table_from_results(teams, results):
     return tab
 
 
+LOW = ((0, 0), (0, 1), (1, 0), (1, 1))
+
+
+def sample_scores(lh, la, rho, rng):
+    """Poisson goals for arrays of expected goals, with the low-score correction, sampled exactly.
+
+    The correction keeps the total chance of the four low scores the same (it only moves chance between
+    them), so plain Poisson draws are kept everywhere except on the scores made rarer: there a draw moves,
+    with chance 1 - f, to one of the scores made likelier, in proportion to the chance each one gains.
+    """
+    gh, ga = rng.poisson(lh), rng.poisson(la)
+    if not rho:
+        return gh, ga
+    at = np.flatnonzero((gh <= 1) & (ga <= 1))
+    if not len(at):
+        return gh, ga
+    h, a, x, y = gh[at], ga[at], lh[at], la[at]
+    f = low_score_factors(x, y, rho)
+    plain = {(0, 0): np.ones(len(at)), (0, 1): y, (1, 0): x, (1, 1): x * y}  # Poisson chance / P(0-0)
+    mine = np.select([(h == i) & (a == j) for i, j in LOW], [f[k] for k in LOW])
+    move = rng.random(len(at)) < 1 - mine  # only possible where f < 1
+    if move.any():
+        m = np.flatnonzero(move)
+        gain = np.stack([plain[k][m] * np.maximum(f[k][m] - 1, 0) for k in LOW])
+        cum = np.cumsum(gain, axis=0)
+        pick = (rng.random(len(m)) * cum[-1] > cum).sum(axis=0)
+        cells = np.array(LOW)[pick]
+        gh[at[m]], ga[at[m]] = cells[:, 0], cells[:, 1]
+    return gh, ga
+
+
 RATING_SD = 50.0  # how unsure we are of each team's true strength, in Elo points
 
 
@@ -111,7 +148,7 @@ def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0
         i, j = idx[h], idx[a]
         lh, la = mu.lambdas(h, a, neutral)
         shift = np.exp(noise[:, i] - noise[:, j])
-        gh, ga = rng.poisson(lh * shift, n), rng.poisson(la / shift, n)
+        gh, ga = sample_scores(lh * shift, la / shift, mu.gm.rho, rng)
         pts[:, i] += np.where(gh > ga, 3, np.where(gh == ga, 1, 0))
         pts[:, j] += np.where(ga > gh, 3, np.where(gh == ga, 1, 0))
         gd[:, i] += gh - ga
@@ -240,20 +277,19 @@ def place_odds(order, teams, top=None, bottom=None):
     return out
 
 
-def match_swings(tracked, champion, fixtures, teams, p_win, min_share=0.02, keep=5):
-    """How much each upcoming game moves the title race.
+def race_swings(tracked, hit, contenders, fixtures, teams, min_share=0.02, keep=5):
+    """How much each upcoming game moves a race (the title, or staying up).
 
-    Within the simulations, the title chance of each contender is split by that game's result
-    (home win / draw / away win). The swing is the biggest gap between results for any contender.
+    hit[s, i] is True when team i gets there (wins the title, goes down...) in simulation s. Within the
+    simulations, each contender's chance is split by that game's result (home win / draw / away win);
+    the swing is the biggest gap between results for any contender.
     """
-    n = float(len(champion))
-    contenders = [i for i in np.argsort(-p_win)[:3] if p_win[i] >= 0.05]
     out = []
     for k, outcome in tracked:
         share = [float((outcome == o).mean()) for o in range(3)]
         cond, swing = {}, 0.0
         for i in contenders:
-            vals = [float((champion[outcome == o] == i).mean()) if share[o] >= min_share else None for o in range(3)]
+            vals = [float(hit[outcome == o, i].mean()) if share[o] >= min_share else None for o in range(3)]
             seen = [v for v in vals if v is not None]
             swing = max(swing, (max(seen) - min(seen)) if len(seen) > 1 else 0.0)
             cond[teams[i]] = [round(v, 3) if v is not None else None for v in vals]
@@ -262,6 +298,20 @@ def match_swings(tracked, champion, fixtures, teams, p_win, min_share=0.02, keep
                     "if": cond})
     out.sort(key=lambda x: -x["swing"])
     return [x for x in out if x["swing"] >= 0.02][:keep]
+
+
+def match_swings(tracked, champion, fixtures, teams, p_win, min_share=0.02, keep=5):
+    """How much each upcoming game moves the title race, for the (up to) three contenders on 5%+."""
+    contenders = [i for i in np.argsort(-p_win)[:3] if p_win[i] >= 0.05]
+    hit = champion[:, None] == np.arange(len(teams))[None, :]
+    return race_swings(tracked, hit, contenders, fixtures, teams, min_share, keep)
+
+
+def drop_swings(tracked, relegated, fixtures, teams, min_share=0.02, keep=5):
+    """The same for the relegation fight: the (up to) four teams whose fate is least settled."""
+    p = relegated.mean(axis=0)
+    open_ = [i for i in np.argsort(-(p * (1 - p)))[:4] if 0.05 <= p[i] <= 0.95]
+    return race_swings(tracked, relegated, open_, fixtures, teams, min_share, keep)
 
 
 def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None, track=0, tiebreak="gd"):
@@ -280,6 +330,8 @@ def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None
     out["positions"] = {t: np.bincount(pos[:, i], minlength=len(teams)) / float(n) for i, t in enumerate(teams)}
     if track:
         out["swings"] = match_swings(res[2], order[:, 0], fixtures, teams, p_win)
+        if bottom:
+            out["drop_swings"] = drop_swings(res[2], pos >= len(teams) - bottom, fixtures, teams)
     return out
 
 
@@ -336,8 +388,9 @@ PLAYOFF_POOLS = [((15, 16), (17, 18), (1, 2)), ((13, 14), (19, 20), (3, 4)),
 R16_ORDER = [1, 8, 4, 5, 2, 7, 3, 6]  # bracket order of the seeds' ties: 1 and 2 only meet in the final
 
 
-def uefa_knockout(ranked, ties, mu, rng_py):
+def uefa_knockout(ranked, ties, mu, rng_py, reached=None):
     """One run of the UEFA knockout from a final league-phase order (best first). Returns the champion.
+    Pass a dict as `reached` to count who reaches each round ({"r16"|"qf"|"sf"|"f": {team: runs}}).
 
     Follows the 2024- format: 9-24 play off in seeded pools, the winners meet 1-8, and the bracket is
     fixed from the round of 16. Real ties (pairings and results) from ESPN override the simulated draw.
@@ -393,6 +446,9 @@ def uefa_knockout(ranked, ties, mu, rng_py):
         field.extend([st, seed_opponent[st]])
     # fixed bracket from here; a real pairing for a later round wins if ESPN has one
     for rnd in ("r16", "qf", "sf", "f"):
+        if reached is not None:
+            for t in field:
+                reached[rnd][t] = reached[rnd].get(t, 0) + 1
         nxt = []
         for i in range(0, len(field), 2):
             a, b = field[i], field[i + 1]
@@ -412,14 +468,17 @@ def simulate_league_phase_ko(lp_teams, lp_results, lp_fixtures, ko_matches, mu, 
     order, pts = sim_table(lp_teams, lp_results, lp_fixtures, mu, n, rng)
     ties = real_ties(ko_matches or [])
     champs = []
+    reached = {k: {} for k in ("r16", "qf", "sf", "f")}
     for s in range(n):
         ranked = [lp_teams[i] for i in order[s]]
         if len(ranked) < 24:  # not the 36-team format: plain bracket of the top 8
             champs.append(run_bracket(ranked[:8], mu, 4, rng_py))
         else:
-            champs.append(uefa_knockout(ranked, ties, mu, rng_py))
+            champs.append(uefa_knockout(ranked, ties, mu, rng_py, reached))
     out = place_odds(order, lp_teams, top=8)  # top 8 go straight to the round of 16
     out["p_ko"] = place_odds(order, lp_teams, top=24)["p_top"]  # top 24 reach the knockouts
+    if reached["r16"]:  # how far each club goes: last 16, quarter-finals, semi-finals, final
+        out["reach"] = {k: {t: c / float(n) for t, c in v.items()} for k, v in reached.items()}
     return dict(out, **{
         "p_win": champion_counts(champs, lp_teams),
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(lp_teams)},
@@ -448,6 +507,7 @@ def simulate_groups_ko(groups, results, fixtures, ko_matches, mu, n, seed, advan
         for i, t in enumerate(teams):
             proj[t] = float(pts[:, i].mean())
     names = list(groups)
+    advanced = {t: 0 for t in all_teams}
     for s in range(n):
         winners, runners, thirds = [], [], []
         for name in names:
@@ -473,11 +533,14 @@ def simulate_groups_ko(groups, results, fixtures, ko_matches, mu, n, seed, advan
                 pairs.extend([w, runners[(i + 1) % k]])
         rest = [t for t in field if t not in pairs]
         bracket = pairs + rest
+        for t in bracket:
+            advanced[t] += 1
         if len(bracket) & (len(bracket) - 1):
             champs.append(run_bracket(bracket, mu, two_leg_min, rng_py))
         else:
             champs.append(run_bracket(bracket, mu, two_leg_min, rng_py, fixed_pairs=True))
-    return {"p_win": champion_counts(champs, all_teams), "proj_pts": proj}
+    return {"p_win": champion_counts(champs, all_teams), "proj_pts": proj,
+            "p_adv": {t: c / float(n) for t, c in advanced.items()}}
 
 
 def simulate_qualifying(groups, results, fixtures, mu, n, seed, direct=1, nxt=1):

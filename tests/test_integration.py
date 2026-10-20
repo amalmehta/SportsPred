@@ -5,7 +5,7 @@ import os
 import random
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest import mock
 
 from pipeline import check, config, live_log, soccer_build, title_backtest as tb
@@ -363,6 +363,73 @@ class RoundSevenTests(unittest.TestCase):
         pairs = {}
         simulate_finals([], {p: 2000 - 20 * i for i, p in enumerate(ranked[:8])}, 1000, 4, projected=ranked[:8], finals=pairs)
         self.assertAlmostEqual(sum(pairs.values()), 1.0, places=6)
+
+
+class RoundEightTests(unittest.TestCase):
+    def test_low_score_correction(self):
+        import numpy as np
+        from pipeline.soccer_model import fit_low_score, score_grid
+        from pipeline.soccer_sim import sample_scores
+        g = score_grid(1.4, 1.1, -0.1)
+        self.assertAlmostEqual(g.sum(), 1.0, places=9)
+        self.assertGreater(g[0, 0], score_grid(1.4, 1.1, 0.0)[0, 0])  # rho < 0: more 0-0s
+        gm = GoalsModel(rho=-0.1)
+        self.assertAlmostEqual(sum(gm.outcome_probs(80)[:3]), 1.0, places=9)
+        self.assertGreater(gm.outcome_probs(0)[1], GoalsModel().outcome_probs(0)[1])  # more draws
+        # sampling follows the corrected grid, and the fit recovers rho from scores drawn that way
+        rng = np.random.default_rng(5)
+        gh, ga = sample_scores(np.full(200000, 1.4), np.full(200000, 1.1), -0.1, rng)
+        for i, j in ((0, 0), (1, 0), (1, 1), (2, 1)):
+            self.assertAlmostEqual(((gh == i) & (ga == j)).mean(), g[i, j], places=2)
+        fitted = fit_low_score(GoalsModel(base=math.log(1.25), slope=0.0), [(0, h, a) for h, a in zip(gh[:60000], ga[:60000])])
+        self.assertAlmostEqual(fitted, -0.1, delta=0.03)
+        # knockout tie maths still symmetric with the correction on
+        mu = Matchups({"A": 1500, "B": 1500}, gm, 60)
+        self.assertAlmostEqual(mu.tie_prob("A", "B", (("A", "B", True),)), 0.5, places=6)
+
+    def test_uefa_rounds_and_group_qualifiers_add_up(self):
+        from pipeline.soccer_sim import simulate_groups_ko, simulate_league_phase_ko
+        teams = ["T%02d" % i for i in range(1, 37)]
+        mu = Matchups({t: 2000 - 15 * i for i, t in enumerate(teams)}, GoalsModel(), 60)
+        fixtures = [(teams[i], teams[(i + k) % 36], False) for i in range(36) for k in (1, 2, 3, 4)]
+        res = simulate_league_phase_ko(teams, [], fixtures, [], mu, 300, 1)
+        for k, n in (("r16", 16), ("qf", 8), ("sf", 4), ("f", 2)):
+            self.assertAlmostEqual(sum(res["reach"][k].values()), n, places=6)
+        groups = {"A": ["a1", "a2", "a3", "a4"], "B": ["b1", "b2", "b3", "b4"], "C": ["c1", "c2", "c3", "c4"]}
+        everyone = [t for g in groups.values() for t in g]
+        gfix = [(h, a, True) for g in groups.values() for h in g for a in g if h < a]
+        out = simulate_groups_ko(groups, [], gfix, [], Matchups({}, GoalsModel(), 60), 400, 2)
+        self.assertAlmostEqual(sum(out["p_adv"].values()), 8, places=6)  # 3 winners, 3 runners-up, 2 best thirds
+        self.assertTrue(all(0 <= out["p_adv"][t] <= 1 for t in everyone))
+
+    def test_feed_is_valid_atom(self):
+        import xml.etree.ElementTree as ET
+        from pipeline import build
+        digest = {"upsets": [{"id": "ita.1", "sport": "soccer", "comp": "Serie A", "date": "2026-10-18T18:45Z",
+                              "text": "Venezia 1–0 Napoli & co", "p": 0.14}],
+                  "movers": [{"id": "eng.1", "sport": "soccer", "comp": "Premier League", "team": "Arsenal",
+                              "before": 0.52, "after": 0.59, "what": "win"}]}
+        comps = [{"id": "atp-1", "sport": "tennis", "name": "Shanghai", "status": "finished", "champion": "P1",
+                  "end": datetime.now(timezone.utc).strftime("%Y-%m-%dT04:00Z")}]
+        with tempfile.TemporaryDirectory() as tmp:
+            n = build.write_feed(digest, comps, site_dir=tmp, now="2026-10-20T12:00Z")
+            root = ET.parse(os.path.join(tmp, "feed.xml")).getroot()
+        ns = "{http://www.w3.org/2005/Atom}"
+        self.assertEqual(n, 3)
+        titles = [e.find(ns + "title").text for e in root.findall(ns + "entry")]
+        self.assertIn("Serie A upset: Venezia 1–0 Napoli & co", titles)
+        self.assertIn("Premier League: Arsenal up to 59% to win", titles)
+        self.assertIn("Shanghai: won by P1", titles)
+
+    def test_relegation_swings(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        c = t.payload()
+        self.assertIn("drop_swings", c)
+        for sw in c["drop_swings"]:
+            self.assertAlmostEqual(sum(sw["share"]), 1.0, places=2)
+            self.assertTrue(all(v is None or 0 <= v <= 1 for vs in sw["if"].values() for v in vs))
+            self.assertTrue(sw["date"])
 
 
 if __name__ == "__main__":

@@ -35,9 +35,23 @@
   }
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+  const ROUND = { r16: "last 16", qf: "quarter-finals", sf: "semi-finals", f: "final" };
   function compRow(e) {
-    const extra = [e.p_top != null ? `top-four finish ${SP.prob(e.p_top)}` : "", e.p_drop ? `relegation ${SP.prob(e.p_drop)}` : ""].filter(Boolean).join(" · ");
+    const s = e.sure || {}, gap = e.xpts != null && e.pts != null ? e.pts - e.xpts : null;
+    const reach = e.reach && !e.out ? Object.entries(e.reach).filter(([k, v]) => ROUND[k] && v > 0 && v < 0.999).slice(-2)
+      .map(([k, v]) => `${ROUND[k]} ${SP.prob(v)}`) : [];
+    const extra = [
+      s.title ? "title won" : "", s.down ? "relegated" : "",
+      e.p_top != null && s.top == null ? `top-${e.top === 8 ? "8" : e.top === 3 ? "three" : "four"} finish ${SP.prob(e.p_top)}` : s.top ? `top ${e.top || 4} sure` : "",
+      e.p_ko != null && s.ko == null && e.p_ko < 0.999 ? `knockouts ${SP.prob(e.p_ko)}` : "",
+      e.p_adv != null && e.status !== "finished" ? `out of the group ${SP.prob(e.p_adv)}` : "",
+      ...reach,
+      e.p_drop && s.down == null ? `relegation ${SP.prob(e.p_drop)}` : "",
+      gap != null && Math.abs(gap) >= 1 ? `${gap > 0 ? "+" : "−"}${Math.abs(gap).toFixed(1)} pts vs expected` : "",
+      e.run_in ? `${e.run_in[0] === 1 ? "hardest" : e.run_in[0] === e.run_in[1] ? "easiest" : ordinal(e.run_in[0]) + "-hardest"} run-in of ${e.run_in[1]}` : "",
+    ].filter(Boolean).join(" · ");
     const odds = e.out ? `<span class="muted">Out</span>` : e.status === "finished" ? (e.p >= 0.999 ? "🏆 Champion" : `<span class="muted">Finished</span>`)
+      : s.title === false && e.what === "win" ? `<span class="muted">Can't win the title</span>`
       : `<span class="pct">${SP.prob(e.p)}</span> <span class="muted small">to ${e.what}</span>`;
     return `<a class="mover" href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}"><span>${SP.tagFor({ id: e.id, group: e.group, sport: e.sport })}</span>
       <span><b>${SP.esc(e.name)}</b>${extra ? `<span class="muted small"> · ${extra}</span>` : ""}</span><span class="num">${odds}</span></a>`;

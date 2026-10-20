@@ -27,7 +27,7 @@ def slug(name):
 
 def summary(c):
     return {k: c.get(k) for k in ("id", "sport", "name", "group", "status", "season", "tour", "country",
-                                  "start", "end", "favourite", "next_match", "champion", "slam", "surface", "projected", "format", "stale", "updated")}
+                                  "start", "end", "favourite", "second", "next_match", "champion", "slam", "surface", "projected", "format", "stale", "updated")}
 
 
 def search_index(summaries):
@@ -66,7 +66,7 @@ def today_digest(summaries, hours=36, min_move=0.03):
         live = c.get("live") or []
         if len(live) >= 2:
             before, after = live[-2], live[-1]
-            for team in set(before["p"]) | set(after["p"]):
+            for team in set(before["p"]) & set(after["p"]):  # a newly listed entrant isn't a move
                 a, b = before["p"].get(team, 0.0), after["p"].get(team, 0.0)
                 if abs(b - a) >= min_move:
                     movers.append(dict(where, team=team, before=a, after=b, since=before["date"],
@@ -108,11 +108,16 @@ def team_pages(summaries, histories, out_dir=None):
         key = "p_qualify" if c.get("format") == "qualifying" else "p_win"
         part = "tennis" if c["sport"] == "tennis" else ("international" if c.get("group") in ("international", "qualifying") else "clubs")
         where = {"id": c["id"], "sport": c["sport"], "name": c["name"], "group": c.get("group"), "status": c.get("status")}
+        hard = {x["team"]: i + 1 for i, x in enumerate(c.get("run_in") or [])}  # 1 = hardest games left
         for r in c.get("table", []):
             p = people.setdefault((c["sport"], r[who]), {"name": r[who], "sport": c["sport"], "part": part, "flag": r.get("flag"),
                                                          "comps": [], "upcoming": [], "recent": []})
+            extra = {k: r[k] for k in ("sure", "xpts", "pts", "p_adv", "p_ko", "reach") if r.get(k) is not None}
+            if r[who] in hard:
+                extra["run_in"] = [hard[r[who]], len(hard)]
             p["comps"].append(dict(where, p=r.get(key, 0.0), what="qualify" if key == "p_qualify" else "win",
-                                   p_top=r.get("p_top"), p_drop=r.get("p_drop"), out=r.get("alive") is False))
+                                   p_top=r.get("p_top"), p_drop=r.get("p_drop"), out=r.get("alive") is False,
+                                   top=(c.get("places") or {}).get("top"), **extra))
         for kind in ("upcoming", "recent"):
             for m in c.get(kind, []):
                 for n in ((m.get("home"), m.get("away")) if c["sport"] == "soccer" else (m.get("a"), m.get("b"))):
@@ -144,6 +149,44 @@ def write_sitemap(summaries, pages, site_dir=None):
     with open(os.path.join(site_dir, "sitemap.xml"), "w", encoding="utf-8") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n%s</urlset>\n' % body)
     return len(urls)
+
+
+def write_feed(digest, summaries, site_dir=None, now=None):
+    """feed.xml (Atom): the week's upsets, the day's biggest odds moves and recent champions, for feed readers."""
+    site_dir = site_dir or os.path.dirname(SITE_DATA_DIR)
+    base = config.SITE_URL or ""
+    now = now or now_iso()
+    stamp = lambda iso: (iso[:16] if len(iso) >= 16 else iso[:10] + "T12:00") + ":00Z"
+    page = lambda sport, cid: base + "competition.html?sport=%s&id=%s" % (sport, cid)
+    entries = []
+    for u in digest.get("upsets", []):
+        entries.append(("upset-%s-%s" % (u["id"], u["date"]), "%s upset: %s" % (u["comp"], u["text"]), u["date"],
+                        page(u["sport"], u["id"]), "We gave that result %d%% before the match." % round(u["p"] * 100)))
+    for m in digest.get("movers", []):
+        up = m["after"] > m["before"]
+        entries.append(("move-%s-%s-%s" % (m["id"], slug(m["team"]), now[:10]),
+                        "%s: %s %s to %d%% to %s" % (m["comp"], m["team"], "up" if up else "down", round(m["after"] * 100),
+                                                     m["what"]),
+                        now, page(m["sport"], m["id"]),
+                        "From %d%% the day before." % round(m["before"] * 100)))
+    recent = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+    for c in summaries:
+        if c.get("status") == "finished" and c.get("champion") and (c.get("end") or "")[:10] >= recent:
+            entries.append(("champion-%s" % c["id"], "%s: won by %s" % (c["name"], c["champion"]), c["end"],
+                            page(c["sport"], c["id"]), "%s are the champions." % c["champion"] if c["sport"] == "soccer"
+                            else "%s is the champion." % c["champion"]))
+    entries.sort(key=lambda e: e[2], reverse=True)
+    body = "".join(
+        "  <entry>\n    <id>tag:sportspred,2026:%s</id>\n    <title>%s</title>\n    <updated>%s</updated>\n"
+        "    <link href=\"%s\"/>\n    <summary>%s</summary>\n  </entry>\n"
+        % (escape(eid), escape(title), stamp(when), escape(link, {'"': "&quot;"}), escape(text))
+        for eid, title, when, link, text in entries[:40])
+    with open(os.path.join(site_dir, "feed.xml"), "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n'
+                "  <title>SportsPred: upsets and big moves</title>\n  <id>%s</id>\n  <updated>%s</updated>\n"
+                '  <link href="%s"/>\n  <link rel="self" href="%sfeed.xml"/>\n  <author><name>SportsPred</name></author>\n%s</feed>\n'
+                % (escape(base or "tag:sportspred,2026:feed"), stamp(now), escape(base), escape(base), body))
+    return len(entries[:40])
 
 
 def main(argv=None):
@@ -194,7 +237,7 @@ def main(argv=None):
                 ratings[sub] = {"weight": m[sub].get("surface_weight"), "players": extras["_ratings"].get(sub, {})}
         else:
             ratings["soccer" if name == "clubs" else "international"] = {
-                "hfa": m.get("hfa"), "base": m.get("goals_base"), "slope": m.get("slope"), "teams": extras.get("_ratings", {})}
+                "hfa": m.get("hfa"), "base": m.get("goals_base"), "slope": m.get("slope"), "rho": m.get("rho", 0), "teams": extras.get("_ratings", {})}
         write_json(ratings_file, ratings)
         model[model_key] = m
         print("   %d competitions in %.0fs" % (len(comps), time.time() - t0))
@@ -203,7 +246,9 @@ def main(argv=None):
     model["updated"] = now_iso()
     write_json(model_path, model, compact=False)
     write_json(os.path.join(SITE_DATA_DIR, "search.json"), search_index(kept.values()))
-    write_json(os.path.join(SITE_DATA_DIR, "today.json"), today_digest(kept.values()), compact=False)
+    digest = today_digest(kept.values())
+    write_json(os.path.join(SITE_DATA_DIR, "today.json"), digest, compact=False)
+    write_feed(digest, kept.values())
     histories = {p: read_json(os.path.join(HISTORY_DIR, p + ".json"), {}) for p in ("clubs", "international", "tennis")}
     pages = team_pages(kept.values(), histories)
     write_json(os.path.join(SITE_DATA_DIR, "teams.json"), pages)
