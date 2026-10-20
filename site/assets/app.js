@@ -254,6 +254,41 @@ const SP = (() => {
     return `<span class="surface s-${esc(s)}"><i aria-hidden="true"></i>${esc(s[0].toUpperCase() + s.slice(1))}</span>`;
   }
 
+  /* ---------- team and player pages ---------- */
+  let teamFiles = {};
+  async function loadTeams() {
+    try { teamFiles = await json("data/teams.json"); } catch (e) { teamFiles = {}; }
+    return teamFiles;
+  }
+  // a name as a link to its page when it has one, otherwise plain text
+  function teamLink(name, sport) {
+    const id = teamFiles[name + "|" + sport];
+    return id ? `<a class="team-link" href="team.html?id=${encodeURIComponent(id)}">${esc(name)}</a>` : esc(name);
+  }
+
+  /* ---------- the maths behind a soccer match, for the detail panels and the compare tool ---------- */
+  function poisson(lam, k) { let p = Math.exp(-lam); for (let i = 1; i <= k; i++) p *= lam / i; return p; }
+  function scoreGrid(lh, la, max = 6) {
+    const grid = [];
+    for (let h = 0; h < max; h++) { grid.push([]); for (let a = 0; a < max; a++) grid[h].push(poisson(lh, h) * poisson(la, a)); }
+    return grid;
+  }
+  function outcomeProbs(lh, la) {
+    let h = 0, d = 0, a = 0;
+    for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) { const p = poisson(lh, i) * poisson(la, j); if (i > j) h += p; else if (i === j) d += p; else a += p; }
+    const s = h + d + a;
+    return [h / s, d / s, a / s];
+  }
+  // a small heatmap of likely scores (one hue, light to dark), with the numbers written in each cell
+  function scoreGridHtml(lh, la, home, away) {
+    const g = scoreGrid(lh, la), top = Math.max(...g.flat());
+    return `<table class="grid-scores" aria-label="Chance of each score"><caption class="small muted">Chance of each score (${esc(home)} down, ${esc(away)} across)</caption>
+      <thead><tr><th></th>${g[0].map((_, a) => `<th>${a}</th>`).join("")}</tr></thead><tbody>
+      ${g.map((row, h) => `<tr><th>${h}</th>${row.map(p => { const t = p / top;
+        return `<td style="--t:${t.toFixed(3)}" title="${h}–${row.indexOf(p)}">${p >= 0.005 ? Math.round(p * 100) + "%" : ""}</td>`; }).join("")}</tr>`).join("")}
+      </tbody></table>`;
+  }
+
   return { settings: () => settings, onChange, header, footer, tagFor, esc, prob, when, date, time, dayKey, json, REPO,
-    following, toggleFollow, starButton, matchState, flag, surface, ago };
+    following, toggleFollow, starButton, matchState, flag, surface, ago, loadTeams, teamLink, scoreGrid, scoreGridHtml, outcomeProbs };
 })();

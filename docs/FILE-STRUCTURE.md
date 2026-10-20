@@ -11,6 +11,7 @@ SportsPred/
 │   ├── build.py               Entry point (python3 -m pipeline.build); writes index.json, model.json and search.json
 │   ├── check.py               Sanity checks before publishing (python3 -m pipeline.check)
 │   ├── stamp.py               Adds content hashes to CSS/JS links before deploy (cache-busting)
+│   ├── smoke.py               Smoke test of the built site before deploy (links, files, scripts)
 │   ├── title_backtest.py      Grades past pre-season / pre-tournament title odds against champions
 │   ├── flags.py               Flag emoji from ESPN country codes and national-team names
 │   ├── config.py              Competitions covered (incl. World Cup qualifying), tennis surfaces by name, history range, simulation counts, name aliases
@@ -29,11 +30,13 @@ SportsPred/
 ├── data/                      Cached history (finished years and events), reused between runs
 │   ├── soccer/<league>/<year>.json
 │   ├── soccer/international_results.csv
-│   └── tennis/<tour>/<event>.json
+│   ├── tennis/<tour>/<event>.json
+│   └── histories/<part>.json  Rating histories for team pages (not committed)
 ├── site/                      The static website (published as-is)
 │   ├── index.html             Home: every competition
 │   ├── competition.html       One competition: chart, odds table, matches
-│   ├── how.html               How the predictions work, plus accuracy
+│   ├── how.html               How the predictions work, plus accuracy and the compare tool
+│   ├── team.html              One team or player: chances everywhere, rating history, games
 │   ├── 404.html               Friendly page for mistyped addresses
 │   ├── manifest.webmanifest   Lets phones add SportsPred to the home screen
 │   ├── sw.js                  Offline support (network first, cached copy when offline)
@@ -43,6 +46,7 @@ SportsPred/
 │   ├── assets/competition.js  Competition page logic and chart
 │   ├── assets/how.js          How It Works: accuracy, calibration chart, title-odds record
 │   ├── assets/notfound.js     404 page
+│   ├── assets/team.js         Team / player page logic
 │   ├── assets/icon.svg        Favicon
 │   ├── assets/icon-*.png      Home-screen icons (180, 192, 512)
 │   ├── assets/og.png / og.svg Link-preview image and its source
@@ -50,7 +54,10 @@ SportsPred/
 │       ├── index.json         One summary per competition
 │       ├── model.json         Fitted parameters, accuracy and calibration
 │       ├── search.json        Every team and player, for the home page search
-│       ├── today.json         Next ~36 hours of matches everywhere, and the biggest odds moves
+│       ├── today.json         Next ~36 hours of matches, big games, upsets and biggest odds moves
+│       ├── teams.json         Name → team page file
+│       ├── teams/<sport>-<name>.json  One per team or player
+│       ├── ratings.json       Every current rating + model constants (compare tool)
 │       ├── soccer/<slug>.json
 │       └── tennis/<tour>-<event>.json
 ├── mac/                       The Mac app (a native window around the live site)

@@ -5,12 +5,22 @@
 """
 import argparse
 import os
+import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 import time
 import traceback
 
 from . import live_log, soccer_build, tennis_build
-from .common import SITE_DATA_DIR, now_iso, read_json, today, write_json
+from .common import DATA_DIR, SITE_DATA_DIR, now_iso, read_json, today, write_json
+
+HISTORY_DIR = os.path.join(DATA_DIR, "histories")  # rating histories per part (kept between runs, not published)
+
+
+def slug(name):
+    """'Borussia Mönchengladbach' -> 'borussia-monchengladbach' (for team page file names)."""
+    ascii_ = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_.lower()).strip("-") or "team"
 
 
 def summary(c):
@@ -41,7 +51,8 @@ def today_digest(summaries, hours=36, min_move=0.03):
     now = datetime.now(timezone.utc)
     soon = (now + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%MZ")
     since = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%MZ")  # keep games that may still be on
-    matches, movers = [], []
+    matches, movers, upsets, big = [], [], [], []
+    week_ahead = (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%MZ")
     for s in summaries:
         c = read_json(os.path.join(SITE_DATA_DIR, s["sport"], s["id"] + ".json"))
         if not c:
@@ -58,9 +69,66 @@ def today_digest(summaries, hours=36, min_move=0.03):
                 if abs(b - a) >= min_move:
                     movers.append(dict(where, team=team, before=a, after=b, since=before["date"],
                                        what="qualify" if c.get("format") == "qualifying" else "win"))
+        for sw in c.get("swings", []):
+            if sw.get("date") and now.strftime("%Y-%m-%dT%H:%MZ") <= sw["date"] <= week_ahead:
+                big.append(dict(where, **sw))
+        # upsets: finished in the last week, and the result was one we gave less than 25%
+        week = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%MZ")
+        for m in c.get("recent", []):
+            if (m.get("date") or "") < week:
+                continue
+            if c["sport"] == "tennis":
+                p_happened = m["p"] if m["w"] == 0 else 1 - m["p"]
+                winner, loser = (m["a"], m["b"]) if m["w"] == 0 else (m["b"], m["a"])
+                text = "%s beat %s" % (winner, loser)
+            else:
+                o = 0 if m["hg"] > m["ag"] else (1 if m["hg"] == m["ag"] else 2)
+                p_happened = m["p"][o]
+                text = "%s %d–%d %s" % (m["home"], m["hg"], m["ag"], m["away"])
+            if p_happened < 0.25:
+                upsets.append(dict(where, date=m["date"], text=text, p=round(p_happened, 3)))
     matches.sort(key=lambda m: m["date"])
     movers.sort(key=lambda m: -abs(m["after"] - m["before"]))
-    return {"updated": now_iso(), "matches": matches, "movers": movers[:8]}
+    upsets.sort(key=lambda u: u["p"])
+    big.sort(key=lambda x: -x["swing"])
+    return {"updated": now_iso(), "matches": matches, "movers": movers[:8], "upsets": upsets[:6], "big": big[:4]}
+
+
+def team_pages(summaries, histories, out_dir=None):
+    """One small file per team or player on the site: chances everywhere, rating history, next and recent games."""
+    out_dir = out_dir or os.path.join(SITE_DATA_DIR, "teams")
+    people = {}
+    for s in summaries:
+        c = read_json(os.path.join(SITE_DATA_DIR, s["sport"], s["id"] + ".json"))
+        if not c:
+            continue
+        who = "player" if c["sport"] == "tennis" else "team"
+        key = "p_qualify" if c.get("format") == "qualifying" else "p_win"
+        part = "tennis" if c["sport"] == "tennis" else ("international" if c.get("group") in ("international", "qualifying") else "clubs")
+        where = {"id": c["id"], "sport": c["sport"], "name": c["name"], "group": c.get("group"), "status": c.get("status")}
+        for r in c.get("table", []):
+            p = people.setdefault((c["sport"], r[who]), {"name": r[who], "sport": c["sport"], "part": part, "flag": r.get("flag"),
+                                                         "comps": [], "upcoming": [], "recent": []})
+            p["comps"].append(dict(where, p=r.get(key, 0.0), what="qualify" if key == "p_qualify" else "win",
+                                   p_top=r.get("p_top"), p_drop=r.get("p_drop"), out=r.get("alive") is False))
+        for kind in ("upcoming", "recent"):
+            for m in c.get(kind, []):
+                for n in ((m.get("home"), m.get("away")) if c["sport"] == "soccer" else (m.get("a"), m.get("b"))):
+                    if (c["sport"], n) in people:
+                        people[(c["sport"], n)][kind].append(dict(m, comp=c["name"], comp_id=c["id"]))
+    index = {}
+    for (sport, name), p in people.items():
+        hist = (histories.get(p["part"]) or {})
+        if p["part"] == "tennis":
+            hist = dict((histories.get("tennis") or {}).get("atp", {}), **(histories.get("tennis") or {}).get("wta", {}))
+        p["rating"] = hist.get(name, [])[-80:]
+        p["upcoming"].sort(key=lambda m: m["date"])
+        p["recent"].sort(key=lambda m: m["date"], reverse=True)
+        p["upcoming"], p["recent"] = p["upcoming"][:10], p["recent"][:10]
+        fid = "%s-%s" % (sport, slug(name))
+        write_json(os.path.join(out_dir, fid + ".json"), p)
+        index[name + "|" + sport] = fid
+    return index
 
 
 def main(argv=None):
@@ -97,6 +165,22 @@ def main(argv=None):
         write(live_log.attach(comps, today_iso))
         kept = {k: v for k, v in kept.items() if not belongs(v)}
         kept.update({c["id"]: summary(c) for c in comps})
+        # rating histories / all ratings travel with the model but aren't published in model.json
+        extras = {k: m.pop(k) for k in ("_histories", "_ratings") if k in m}
+        for sub in ("atp", "wta"):
+            if isinstance(m.get(sub), dict):
+                extras.setdefault("_histories", {})[sub] = m[sub].pop("_histories", {})
+                extras.setdefault("_ratings", {})[sub] = m[sub].pop("_ratings", {})
+        write_json(os.path.join(HISTORY_DIR, name + ".json"), extras.get("_histories", {}))
+        ratings_file = os.path.join(SITE_DATA_DIR, "ratings.json")
+        ratings = read_json(ratings_file, {})
+        if name == "tennis":
+            for sub in ("atp", "wta"):
+                ratings[sub] = {"weight": m[sub].get("surface_weight"), "players": extras["_ratings"].get(sub, {})}
+        else:
+            ratings["soccer" if name == "clubs" else "international"] = {
+                "hfa": m.get("hfa"), "base": m.get("goals_base"), "slope": m.get("slope"), "teams": extras.get("_ratings", {})}
+        write_json(ratings_file, ratings)
         model[model_key] = m
         print("   %d competitions in %.0fs" % (len(comps), time.time() - t0))
 
@@ -105,6 +189,9 @@ def main(argv=None):
     write_json(model_path, model, compact=False)
     write_json(os.path.join(SITE_DATA_DIR, "search.json"), search_index(kept.values()))
     write_json(os.path.join(SITE_DATA_DIR, "today.json"), today_digest(kept.values()), compact=False)
+    histories = {p: read_json(os.path.join(HISTORY_DIR, p + ".json"), {}) for p in ("clubs", "international", "tennis")}
+    pages = team_pages(kept.values(), histories)
+    write_json(os.path.join(SITE_DATA_DIR, "teams.json"), pages)
     if failed:
         raise SystemExit("failed: %s" % ", ".join(failed))
 

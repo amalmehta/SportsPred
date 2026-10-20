@@ -74,12 +74,14 @@ def table_from_results(teams, results):
 RATING_SD = 50.0  # how unsure we are of each team's true strength, in Elo points
 
 
-def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD):
+def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD, track=0):
     """Simulate remaining fixtures n times.
 
     Each simulation first nudges every team's rating by a random amount (sd = rating_sd), so a
     rating is treated as an estimate rather than the truth; without it long-range odds are overconfident.
     Returns (order, pts): order[s, k] = index of the team finishing k-th in sim s; pts[s, i] final points.
+    With track=k, also returns the simulated outcome (0 home win, 1 draw, 2 away win) of the first k
+    fixtures: a list of (fixture position, outcomes array), used to measure how much each game matters.
     """
     idx = {t: i for i, t in enumerate(teams)}
     base = table_from_results(teams, results)
@@ -88,7 +90,8 @@ def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD):
     gd = np.tile(np.array([base[t][2] for t in teams], dtype=float), (n, 1))
     gf = np.tile(np.array([base[t][3] for t in teams], dtype=float), (n, 1))
     noise = rng.normal(0.0, rating_sd, (n, T)) * (mu.gm.slope / 400.0)
-    for h, a, neutral in fixtures:
+    tracked = []
+    for k, (h, a, neutral) in enumerate(fixtures):
         if h not in idx or a not in idx:
             continue
         i, j = idx[h], idx[a]
@@ -101,8 +104,12 @@ def sim_table(teams, results, fixtures, mu, n, rng, rating_sd=RATING_SD):
         gd[:, j] += ga - gh
         gf[:, i] += gh
         gf[:, j] += ga
+        if len(tracked) < track:
+            tracked.append((k, np.where(gh > ga, 0, np.where(gh == ga, 1, 2))))
     key = pts * 1e7 + (gd + 500) * 1e3 + gf + rng.random((n, T)) * 0.5
     order = np.argsort(-key, axis=1)
+    if track:
+        return order, pts, tracked
     return order, pts
 
 
@@ -209,16 +216,44 @@ def place_odds(order, teams, top=None, bottom=None):
     return out
 
 
-def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None):
-    """Domestic league: champion = top of the table; also the chance of a top-`top` or bottom-`bottom` finish."""
+def match_swings(tracked, champion, fixtures, teams, p_win, min_share=0.02, keep=5):
+    """How much each upcoming game moves the title race.
+
+    Within the simulations, the title chance of each contender is split by that game's result
+    (home win / draw / away win). The swing is the biggest gap between results for any contender.
+    """
+    n = float(len(champion))
+    contenders = [i for i in np.argsort(-p_win)[:3] if p_win[i] >= 0.05]
+    out = []
+    for k, outcome in tracked:
+        share = [float((outcome == o).mean()) for o in range(3)]
+        cond, swing = {}, 0.0
+        for i in contenders:
+            vals = [float((champion[outcome == o] == i).mean()) if share[o] >= min_share else None for o in range(3)]
+            seen = [v for v in vals if v is not None]
+            swing = max(swing, (max(seen) - min(seen)) if len(seen) > 1 else 0.0)
+            cond[teams[i]] = [round(v, 3) if v is not None else None for v in vals]
+        h, a, _ = fixtures[k]
+        out.append({"home_key": h, "away_key": a, "swing": round(swing, 3), "share": [round(x, 3) for x in share],
+                    "if": cond})
+    out.sort(key=lambda x: -x["swing"])
+    return [x for x in out if x["swing"] >= 0.02][:keep]
+
+
+def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None, track=0):
+    """Domestic league: champion = top of the table; also the chance of a top-`top` or bottom-`bottom` finish.
+    With track=k, also says which of the next k games swing the title race most (see match_swings)."""
     rng = np.random.default_rng(seed)
-    order, pts = sim_table(teams, results, fixtures, mu, n, rng)
+    res = sim_table(teams, results, fixtures, mu, n, rng, track=track)
+    order, pts = res[0], res[1]
     p_win = np.bincount(order[:, 0], minlength=len(teams)) / float(n)
     out = {
         "p_win": {t: float(p_win[i]) for i, t in enumerate(teams)},
         "proj_pts": {t: float(pts[:, i].mean()) for i, t in enumerate(teams)},
     }
     out.update(place_odds(order, teams, top, bottom))
+    if track:
+        out["swings"] = match_swings(res[2], order[:, 0], fixtures, teams, p_win)
     return out
 
 

@@ -59,6 +59,7 @@ This builds `mac/build/SportsPred.app`, a universal app for Apple silicon and In
 | ⇧⌘C | Copy a link to the page you're on |
 | (on launch) | Reopens the page you were last on |
 | ⌥⌘O | Open the page in your browser |
+| ⌘F | Find a team or player |
 | File → Share… | Share the page (Messages, Mail, AirDrop…) |
 | Help → Send Feedback… | Opens the feedback panel |
 
@@ -76,6 +77,10 @@ python3 -m unittest discover -s tests
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
 - **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
+- **Team and player pages:** click any name in a table, in search or under Your teams to see their chances everywhere, their rating over the last year, and their next and recent games.
+- **Why these numbers?** Under each upcoming match: both ratings, home advantage, expected goals, a grid of likely scores and the last meetings.
+- **Matches that matter / What if…?** League pages show the games that swing the title race most, and let you pick results for the next games and replay the season in your browser.
+- **Compare any two:** on How It Works, pick two clubs, national teams or players to see the model's chances and likely scores.
 - **Follow teams:** tap ☆ next to any team or player in a competition's table (or in search results). They appear under **Your teams** at the top of the home page, with their chances everywhere. Saved in this browser.
 - **Add to calendar:** on a competition page, **Add to calendar** downloads its upcoming matches, with the model's chances in each event, as an `.ics` file for Calendar, Outlook or Google Calendar.
 - **Chart legend:** click a team in the legend to hide or show its line.
@@ -86,7 +91,7 @@ python3 -m unittest discover -s tests
 
 ## Hosting (GitHub Pages)
 
-`.github/workflows/update.yml` runs hourly (GitHub sometimes delays scheduled runs), on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions, checks them (`pipeline.check`), adds content hashes to the CSS/JS links (`pipeline.stamp`) and publishes `site/` to GitHub Pages. If one competition's data can't be fetched, that competition keeps its last good predictions (marked "Not refreshed") and everything else still updates. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
+`.github/workflows/update.yml` runs hourly (GitHub sometimes delays scheduled runs), on every push to `main`, and when started by hand from the Actions tab. It runs the tests, rebuilds the predictions, checks them (`pipeline.check`), smoke-tests the built site (`pipeline.smoke`), adds content hashes to the CSS/JS links (`pipeline.stamp`) and publishes `site/` to GitHub Pages. If one competition's data can't be fetched, that competition keeps its last good predictions (marked "Not refreshed") and everything else still updates. The downloaded history is kept in the Actions cache between runs. One-time setup: in the repository settings, set **Pages → Source** to **GitHub Actions**.
 
 ## Changing what's covered
 

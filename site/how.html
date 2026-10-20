@@ -41,6 +41,20 @@
   <p><b>Soccer:</b> the rating gap (plus home advantage) sets how many goals each side should score, for example 1.9 against 0.9. Goals are treated as random (Poisson) draws around those averages. That one model gives the home win / draw / away win chances, the most likely score and, by adding the chances up, everything else.</p>
   <p><b>Tennis:</b> the classic Elo formula gives the chance one player beats another over three sets. For men's Grand Slams (best of five) it's converted through the implied chance of winning each set, which makes favourites a bit safer over five sets.</p>
 
+  <h3>Try it: any two teams or players</h3>
+  <div class="panel compare" id="compare">
+    <div class="field"><label for="cmp-sport">Who</label>
+      <div class="seg" id="cmp-sport"><button type="button" data-v="soccer" class="on">Clubs</button><button type="button" data-v="international">National teams</button><button type="button" data-v="atp">ATP</button><button type="button" data-v="wta">WTA</button></div></div>
+    <div class="cmp-pick">
+      <div class="field"><label for="cmp-a">Home side / player A</label><input id="cmp-a" list="cmp-list" autocomplete="off"></div>
+      <div class="field"><label for="cmp-b">Away side / player B</label><input id="cmp-b" list="cmp-list" autocomplete="off"></div>
+      <datalist id="cmp-list"></datalist>
+    </div>
+    <div class="field" id="cmp-where"><label>Where</label><div class="seg" id="cmp-venue"><button type="button" data-v="home" class="on">At A's ground</button><button type="button" data-v="neutral">Neutral</button></div></div>
+    <div class="field" id="cmp-court" hidden><label>Court</label><div class="seg" id="cmp-surface"><button type="button" data-v="hard" class="on">Hard</button><button type="button" data-v="clay">Clay</button><button type="button" data-v="grass">Grass</button><button type="button" data-v="bo5">Hard, best of 5</button></div></div>
+    <div id="cmp-out" aria-live="polite"></div>
+  </div>
+
   <h2>3. Play the rest out 10,000 times</h2>
   <p>To pick a winner the model doesn't just pick the best-rated side. It simulates every remaining match 10,000 times, keeping real results already played:</p>
   <ul>
@@ -52,6 +66,7 @@
     <li><b>ATP and WTA Finals</b>: two round-robin groups of four (most wins first, a two-way tie goes to head-to-head), then semi-finals (group winner against the other group's runner-up) and a final. Before the groups are drawn, the field is projected from the current top 8 in the rankings and the draw is simulated too.</li>
   </ul>
   <p>A team's title chance is simply how often it won across those 10,000 runs.</p>
+  <p>The same runs say which games matter: split the simulations by one game's result and see how much each contender's chance moves. League pages show the biggest of these as <b>Matches that matter</b>, and <b>What if…?</b> lets you fix results yourself and replay the season in your browser.</p>
 
   <h2>4. Odds over time</h2>
   <p>The charts replay the season: for each match day the model uses only the results and ratings known at the end of that day, then runs the simulation again. That's how the line can be drawn from before the first match, and it shows how the race changed as results came in. Today's point moves with every update (about hourly), and a new day adds a new point.</p>

@@ -11,6 +11,7 @@ from . import flags, live_log
 from .soccer_data import FAILED, fetch_groups, load_international_results, load_slug
 from .soccer_model import Elo, fit_goals_model, score_predictions
 from . import title_backtest as tb
+from .soccer_sim import RATING_SD
 from .soccer_sim import (Matchups, simulate_groups_ko, simulate_league,
                          simulate_league_phase_ko, simulate_qualifying)
 
@@ -164,7 +165,7 @@ def replay_days(season_matches, today_iso, max_points=60):
 
 # ---------------------------------------------------------------- one competition
 
-def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None):
+def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None, track=0):
     mu = Matchups(ratings, gm, hfa)
     fmt = cfg["format"]
     fin = [m for m in season_matches if m["status"] == "final"]
@@ -173,7 +174,7 @@ def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None):
         teams = sorted({m["home_key"] for m in season_matches} | {m["away_key"] for m in season_matches})
         return simulate_league(teams, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
                                [(m["home_key"], m["away_key"], m["neutral"]) for m in todo], mu, n, seed,
-                               top=cfg.get("top"), bottom=cfg.get("drop"))
+                               top=cfg.get("top"), bottom=cfg.get("drop"), track=track)
     if fmt == "qualifying":
         direct, nxt, _ = cfg["_slots"]
         return simulate_qualifying(groups, [(m["home_key"], m["away_key"], m["hg"], m["ag"]) for m in fin],
@@ -192,10 +193,62 @@ def simulate_comp(cfg, season_matches, ratings, gm, hfa, n, seed, groups=None):
                               advance_top=cfg.get("advance_top", 2), two_leg_min=cfg.get("two_leg_min", 999))
 
 
-def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_iso, groups=None, group_of=None):
+def rating_histories(finished, elo, names, today_iso, days):
+    """{team name: [[date, rating before that match], ..., [today, rating now]]} for the team pages."""
+    since = (date.fromisoformat(today_iso[:10]) - timedelta(days=days)).isoformat()
+    out = {}
+    for m in finished:
+        if m["date"] < since or m.get("id") not in elo.pre:
+            continue
+        for key, r in zip((m["home_key"], m["away_key"]), elo.pre[m["id"]]):
+            if key in names:
+                out.setdefault(names[key], []).append([day(m["date"]), round(r)])
+    for key, name in names.items():
+        if name in out and key in elo.ratings:
+            out[name].append([today_iso[:10], round(elo.ratings[key])])
+    return out
+
+
+def h2h_index(finished):
+    """{frozenset(team, team): meetings, newest first} for head-to-head records."""
+    out = {}
+    for m in finished:
+        out.setdefault(frozenset((m["home_key"], m["away_key"])), []).append(m)
+    for v in out.values():
+        v.sort(key=lambda m: m["date"], reverse=True)
+    return out
+
+
+def meetings(h2h, a, b, names, keep=5):
+    return [{"date": m["date"], "home": names.get(m["home_key"], m["home_key"]), "away": names.get(m["away_key"], m["away_key"]),
+             "hg": m["hg"], "ag": m["ag"]} for m in (h2h or {}).get(frozenset((a, b)), [])[:keep]]
+
+
+def whatif_data(season_matches, mu, names, cfg):
+    """Everything the page needs to re-run the league itself: table so far and every remaining fixture's
+    expected goals (the what-if tool picks results and simulates the rest in the browser)."""
+    teams = sorted({m["home_key"] for m in season_matches} | {m["away_key"] for m in season_matches})
+    idx = {t: i for i, t in enumerate(teams)}
+    base = {t: [0, 0, 0] for t in teams}
+    fixtures = []
+    for m in sorted(season_matches, key=lambda m: m["date"]):
+        if m["status"] == "final":
+            for t, gf, ga in ((m["home_key"], m["hg"], m["ag"]), (m["away_key"], m["ag"], m["hg"])):
+                base[t][0] += 3 if gf > ga else (1 if gf == ga else 0)
+                base[t][1] += gf - ga
+                base[t][2] += gf
+        else:
+            lh, la = mu.lambdas(m["home_key"], m["away_key"], m["neutral"])
+            fixtures.append([idx[m["home_key"]], idx[m["away_key"]], round(lh, 3), round(la, 3), m["date"]])
+    return {"teams": [names.get(t, t) for t in teams], "base": [base[t] for t in teams], "fixtures": fixtures,
+            "noise": round(RATING_SD * mu.gm.slope / 400.0, 4), "top": cfg.get("top"), "drop": cfg.get("drop")}
+
+
+def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_iso, groups=None, group_of=None, h2h=None):
     hfa = elo.hfa
     seed = seed_for(cfg["slug"], today_iso[:10])
-    now = simulate_comp(cfg, season_matches, elo.ratings, gm, hfa, config.SIMS_TODAY, seed, groups)
+    now = simulate_comp(cfg, season_matches, elo.ratings, gm, hfa, config.SIMS_TODAY, seed, groups,
+                        track=15 if cfg["format"] == "league" else 0)
     qualifying = cfg["format"] == "qualifying"
     key = "p_qualify" if qualifying else "p_win"  # what the chart and the headline track
 
@@ -257,7 +310,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         upcoming.append({"date": m["date"], "home": m["home"], "away": m["away"], "live": m["status"] == "live",
                          "hf": flag(m["home_key"]), "af": flag(m["away_key"]),
                          "p": [round(ph, 3), round(pd, 3), round(pa, 3)], "score": list(score),
-                         "xg": [round(lh, 2), round(la, 2)]})
+                         "xg": [round(lh, 2), round(la, 2)], "neutral": m["neutral"],
+                         "r": [round(mu.rating(m["home_key"])), round(mu.rating(m["away_key"]))],
+                         "h2h": meetings(h2h, m["home_key"], m["away_key"], names)})
         if len(upcoming) >= 30:
             break
 
@@ -301,6 +356,12 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         "favourite": {"name": fav["team"], "p": fav[key]} if fav else None,
         "next_match": upcoming[0]["date"] if upcoming else None,
         "record": track_record(calls),
+        "hfa": hfa,
+        "swings": [dict(sw, home=names.get(sw["home_key"], sw["home_key"]), away=names.get(sw["away_key"], sw["away_key"]),
+                        date=next((m["date"] for m in todo if m["home_key"] == sw["home_key"] and m["away_key"] == sw["away_key"]), None),
+                        **{"if": {names.get(k, k): v for k, v in sw["if"].items()}})
+                   for sw in now.get("swings", [])],
+        "whatif": whatif_data(season_matches, mu, names, cfg) if cfg["format"] == "league" else None,
         "places": ({"top": cfg.get("top"), "drop": cfg.get("drop")} if cfg["format"] == "league" else
                    {"top": 8, "ko": 24} if cfg["format"] == "league_phase_ko" else None),
         "slots": {"direct": cfg["_slots"][0], "next": cfg["_slots"][1], "next_label": cfg["_slots"][2]} if qualifying else None,
@@ -334,6 +395,7 @@ def build_clubs(today_iso):
     wanted.update(tb.pre_day(sm) for _, _, sm in past)
     elo, samples, snaps = run_club_elo(finished, hfa, wanted)
 
+    h2h = h2h_index(finished)
     comps, rows = [], []
     cut = (t - timedelta(days=365)).isoformat()
     predicted = {c["slug"] for c in config.SOCCER_COMPETITIONS}
@@ -350,14 +412,16 @@ def build_clubs(today_iso):
                 comps.append(old)
                 continue
         print("  simulating %s" % cfg["name"])
-        payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso)
+        payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso, h2h=h2h)
         comps.append(payload)
     print("  grading past title odds")
     graded = grade_past_seasons(past, snaps, gm, hfa, names)
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
              "backtest": score_predictions(rows), "matches_rated": len(finished),
              "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)]),
-             "title_backtest": {"summary": tb.summarise(graded), "events": graded}}
+             "title_backtest": {"summary": tb.summarise(graded), "events": graded},
+             "_histories": rating_histories(finished, elo, names, today_iso, days=400),
+             "_ratings": {names.get(k, k): round(v) for k, v in elo.ratings.items() if k in names}}
     return comps, model
 
 
@@ -455,6 +519,7 @@ def build_international(today_iso):
             samples.append((rh + (0 if m["neutral"] else hfa) - ra, m["hg"], m["ag"]))
     snaps = elo.run(rows, wanted, on_match)
     gm = fit_goals_model(samples)
+    intl_h2h = h2h_index([dict(r, home_key=r["home"], away_key=r["away"]) for r in rows])
 
     comps = []
     for cfg, sm in active:
@@ -487,7 +552,8 @@ def build_international(today_iso):
             sm_kept = [m for m in sm_kept if m["stage"] == stage]
             cfg = dict(cfg, _slots=next(v for k, v in sorted(cfg["stages"].items(), key=lambda kv: -len(kv[0]))
                                         if k in stage))
-        comps.append(comp_payload(cfg, cfg["group"], sm_kept, elo, gm, snaps, names, today_iso, groups, group_of))
+        comps.append(comp_payload(cfg, cfg["group"], sm_kept, elo, gm, snaps, names, today_iso, groups, group_of,
+                                  h2h=intl_h2h))
 
     cut = (t - timedelta(days=365)).isoformat()
     bt = []
@@ -499,6 +565,10 @@ def build_international(today_iso):
     model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3),
              "backtest": score_predictions(bt), "matches_rated": len(rows),
              "calibration": calibration([(r[i], int(r[3] == i)) for r in bt for i in range(3)])}
+    teams_now = {r["team"] for c in comps for r in c.get("table", [])}
+    model["_histories"] = rating_histories([dict(r, home_key=r["home"], away_key=r["away"]) for r in rows], elo,
+                                           {t: t for t in teams_now}, today_iso, days=1500)
+    model["_ratings"] = {t: round(elo.ratings[t]) for t in teams_now if t in elo.ratings}
     return comps, model
 
 

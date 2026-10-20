@@ -12,6 +12,7 @@
   SP.footer(index.updated);
   let digest = { matches: [], movers: [] };
   try { digest = await SP.json("data/today.json"); } catch (e) { /* optional */ }
+  await SP.loadTeams();
   let allMatches = false;
   let people = null;
   const fold = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -59,7 +60,7 @@
     const mine = people.filter(p => follow.has(p.n));
     if (!mine.length) return "";
     return `<h2>Your teams</h2><div class="movers">${mine.map(p => `<div class="mover">${SP.starButton(p.n)}
-      <span><b>${SP.esc(p.n)}</b></span><span class="small">${p.in.map(e =>
+      <span><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)}</b></span><span class="small">${p.in.map(e =>
         `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)}: ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join(" · ")}</span></div>`).join("")}</div>`;
   }
 
@@ -81,6 +82,23 @@
           <div class="teams"><span>${SP.esc(home)}</span><span class="muted small">v</span><span>${SP.esc(away)}</span></div>
           <div class="meta">${tag}<span>Pick: <b>${SP.esc(call)}</b> ${SP.prob(best)}</span></div></a>`;
       }).join("")}</div>${matches.length > 5 ? `<p><button class="chip" id="more-matches">${allMatches ? "Show fewer" : `Show all ${matches.length}`}</button></p>` : ""}`;
+    }
+    const big = (digest.big || []).filter(pick);
+    if (big.length) {
+      html += `<h2>Big games this week</h2><div class="movers">${big.map(x => {
+        const [team, v] = Object.entries(x.if)[0] || [];
+        const words = team === x.home ? ["win", "draw", "lose"] : ["lose", "draw", "win"];
+        const range = v ? [0, 1, 2].filter(i => v[i] != null).map(i => `${words[i]} ${SP.prob(v[i])}`).join(" · ") : "";
+        return `<a class="mover" href="${link(x)}"><span class="arrow" aria-hidden="true">⚡</span>
+          <span><b>${SP.esc(x.home)} v ${SP.esc(x.away)}</b><span class="muted small"> · ${SP.esc(x.comp)} · ${SP.esc(SP.when(x.date))}</span></span>
+          <span class="small">${team ? `${SP.esc(team)}'s title chance: ${range}` : ""}</span></a>`;
+      }).join("")}</div>`;
+    }
+    const upsets = (digest.upsets || []).filter(pick);
+    if (upsets.length) {
+      html += `<h2>Biggest upsets this week</h2><div class="movers">${upsets.map(u => `<a class="mover" href="${link(u)}">
+        <span class="arrow" aria-hidden="true">!</span><span><b>${SP.esc(u.text)}</b><span class="muted small"> · ${SP.esc(u.comp)} · ${SP.esc(SP.date(u.date))}</span></span>
+        <span class="small">we gave it <b>${SP.prob(u.p)}</b></span></a>`).join("")}</div>`;
     }
     if (movers.length) {
       html += `<h2>Biggest moves since yesterday</h2><div class="movers">${movers.map(m => {
@@ -132,7 +150,7 @@
     await loadPeople();
     const hits = people.filter(p => p.key.includes(q))
       .sort((a, b) => (a.key.startsWith(q) ? 0 : 1) - (b.key.startsWith(q) ? 0 : 1) || a.n.localeCompare(b.n)).slice(0, 12);
-    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.esc(p.n)} ${SP.starButton(p.n)}</b>${p.in.map(e =>
+    found.innerHTML = hits.length ? hits.map(p => `<div class="hit"><b>${SP.teamLink(p.n, (p.in[0] || {}).sport)} ${SP.starButton(p.n)}</b>${p.in.map(e =>
       `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)} · ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join("")}</div>`).join("")
       : `<div class="none">No team or player called “${SP.esc(find.value.trim())}” in the current competitions.</div>`;
     found.hidden = false;
@@ -159,6 +177,7 @@
   });
   document.addEventListener("click", e => { if (!e.target.closest(".search")) found.hidden = true; });
 
+  if (params.get("find") != null) find.focus();  // the Mac app's Find a Team (⌘F) lands here
   SP.onChange(() => { if (!found.hidden) search(); });  // keep stars in the results in step
   SP.onChange(render);
   render();

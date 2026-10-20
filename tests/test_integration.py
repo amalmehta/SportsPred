@@ -195,11 +195,59 @@ class StampTests(unittest.TestCase):
             with open(page, "w") as f:
                 f.write('<link href="assets/app.css"><script src="assets/app.js?v=old"></script><a href="how.html">')
             stamp(tmp)
-            html = open(page).read()
+            with open(page) as f:
+                html = f.read()
             self.assertRegex(html, r'assets/app\.css\?v=[0-9a-f]{10}"')
             self.assertRegex(html, r'assets/app\.js\?v=[0-9a-f]{10}"')
             self.assertNotIn("v=old", html)
             self.assertIn('href="how.html"', html)  # pages themselves are untouched
+
+
+class NewFeatureTests(unittest.TestCase):
+    def test_title_swings_and_whatif_data(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        c = t.payload()
+        # the next games: home win / draw / away win shares add up, and conditional odds are probabilities
+        for sw in c["swings"]:
+            self.assertAlmostEqual(sum(sw["share"]), 1.0, places=2)
+            self.assertTrue(all(v is None or 0 <= v <= 1 for vs in sw["if"].values() for v in vs))
+            self.assertIn(sw["home"], t.teams)
+        w = c["whatif"]
+        self.assertEqual(len(w["teams"]), 6)
+        self.assertEqual(len(w["fixtures"]), len([m for m in t.matches if m["status"] != "final"]))
+        played = sum(b[0] for b in w["base"])
+        self.assertEqual(played, sum(r["pts"] for r in c["table"]))  # table so far matches
+        self.assertTrue(all("r" in m and "h2h" in m for m in c["upcoming"]))
+
+    def test_team_pages_and_smoke_test(self):
+        from pipeline import build, smoke
+        with tempfile.TemporaryDirectory() as tmp:
+            data = os.path.join(tmp, "data")
+            comp = {"id": "x.1", "sport": "soccer", "name": "Test League", "group": "domestic", "status": "live",
+                    "table": [{"team": "Alpha", "p_win": 0.7}, {"team": "Bravo", "p_win": 0.3}],
+                    "upcoming": [{"date": "2026-10-25T15:00Z", "home": "Alpha", "away": "Bravo", "p": [0.5, 0.3, 0.2]}], "recent": []}
+            write_json(os.path.join(data, "soccer", "x.1.json"), comp)
+            old = build.SITE_DATA_DIR
+            build.SITE_DATA_DIR = data
+            try:
+                pages = build.team_pages([{"id": "x.1", "sport": "soccer"}], {"clubs": {"Alpha": [["2026-10-01", 1600]]}},
+                                         out_dir=os.path.join(data, "teams"))
+            finally:
+                build.SITE_DATA_DIR = old
+            self.assertEqual(pages["Alpha|soccer"], "soccer-alpha")
+            alpha = __import__("json").load(open(os.path.join(data, "teams", "soccer-alpha.json")))
+            self.assertEqual((alpha["rating"], len(alpha["upcoming"])), ([["2026-10-01", 1600]], 1))
+            write_json(os.path.join(data, "teams.json"), pages)
+            write_json(os.path.join(data, "index.json"), {"competitions": [{"id": "x.1", "sport": "soccer"}]})
+            with open(os.path.join(tmp, "index.html"), "w") as f:
+                f.write('<link href="assets/app.css"><a href="https://example.com">x</a>')
+            self.assertEqual(len(smoke.problems(tmp)), 1)  # assets/app.css is missing
+            os.makedirs(os.path.join(tmp, "assets"))
+            with open(os.path.join(tmp, "assets", "app.css"), "w") as f:
+                f.write("body{}")
+            self.assertEqual(smoke.problems(tmp), [])
+        self.assertEqual(build.slug("Borussia Mönchengladbach"), "borussia-monchengladbach")
 
 
 if __name__ == "__main__":

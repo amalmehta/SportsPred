@@ -130,6 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if webView.url == nil || webView.url?.absoluteString == "about:blank" { go(siteURL) } else { webView.reload() }
     }
     @objc func goHome(_ sender: Any?) { go(siteURL) }
+    @objc func findTeam(_ sender: Any?) {
+        // on the home page just focus the search box, anywhere else open the home page ready to search
+        if let url = webView.url, url.path.hasSuffix("/index.html") || url.path == siteURL.path {
+            runOnPage("(document.getElementById('find') || {focus(){}}).focus()")
+        } else {
+            go(siteURL.appendingPathComponent("index.html").withQuery("find=1"))
+        }
+    }
     @objc func goSoccer(_ sender: Any?) { go(siteURL.appendingPathComponent("index.html").withQuery("sport=soccer")) }
     @objc func goTennis(_ sender: Any?) { go(siteURL.appendingPathComponent("index.html").withQuery("sport=tennis")) }
     @objc func goHow(_ sender: Any?) { go(siteURL.appendingPathComponent("how.html")) }
@@ -204,6 +212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             item("Copy", #selector(NSText.copy(_:)), "c"),
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            .separator(),
+            item("Find a Team or Player…", #selector(findTeam(_:)), "f", target: me),
         ])
         _ = submenu("View", [
             item("Reload", #selector(reload(_:)), "r", target: me),

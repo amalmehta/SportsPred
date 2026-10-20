@@ -88,3 +88,67 @@ function calibrationChart(m) {
   if (top && top.lo >= 0.9) document.getElementById("calib-note").textContent =
     `Tennis runs a little hot at the extremes: ATP players given ${pct(top.p)} won ${pct(top.freq)} of the time. Softening those numbers was tested, but it didn't help on both tours when checked on unseen matches, so the model is left as it is and the gap is shown here instead.`;
 }
+
+
+/* Try it: the same formulas the pipeline uses, on any two teams or players. */
+(async () => {
+  const box = document.getElementById("compare");
+  if (!box) return;
+  let R;
+  try { R = await SP.json("data/ratings.json"); } catch (e) { box.hidden = true; return; }
+  let who = "soccer", venue = "home", court = "hard";
+  const $ = id => document.getElementById(id);
+  const names = () => Object.keys((R[who] || {}).teams || (R[who] || {}).players || {}).sort();
+  const winProb = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  const bestOfFive = p3 => {  // through the implied chance of winning each set, as in the pipeline
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 50; i++) { const s = (lo + hi) / 2; if (s * s * (3 - 2 * s) < p3) lo = s; else hi = s; }
+    const s = (lo + hi) / 2, q = 1 - s;
+    return s ** 3 * (1 + 3 * q + 6 * q * q);
+  };
+  function fill() {
+    $("cmp-list").innerHTML = names().map(n => `<option value="${SP.esc(n)}">`).join("");
+    const list = names();
+    const tops = list.slice().sort((a, b) => rating(b) - rating(a));
+    $("cmp-a").value = tops[0] || ""; $("cmp-b").value = tops[1] || "";
+    $("cmp-where").hidden = who === "atp" || who === "wta";
+    $("cmp-court").hidden = !$("cmp-where").hidden;
+    show();
+  }
+  function rating(name) {
+    const x = R[who] || {};
+    if (x.teams) return x.teams[name];
+    const r = (x.players || {})[name];
+    if (!r) return undefined;
+    const w = x.weight || 0, surface = court === "bo5" ? "hard" : court;
+    return (1 - w) * r[0] + w * r[{ hard: 1, clay: 2, grass: 3 }[surface]];
+  }
+  function show() {
+    const a = $("cmp-a").value, b = $("cmp-b").value, ra = rating(a), rb = rating(b), out = $("cmp-out");
+    if (ra == null || rb == null || a === b) { out.innerHTML = `<p class="muted small">Pick two different names from the list.</p>`; return; }
+    if (who === "atp" || who === "wta") {
+      let p = winProb(ra, rb); if (court === "bo5") p = bestOfFive(p);
+      out.innerHTML = `<p>Ratings on this court: ${SP.esc(a)} <b>${Math.round(ra)}</b>, ${SP.esc(b)} <b>${Math.round(rb)}</b>.</p>
+        <div class="split" style="height:26px">${[[p, "h", a], [1 - p, "a", b]].map(([v, cls, n]) => `<div class="${cls}" style="flex:${v * 100} 1 0" title="${SP.esc(n)}">${v >= 0.12 ? SP.prob(v) : ""}</div>`).join("")}</div>
+        <p class="small muted">${SP.esc(a)} ${SP.prob(p)} · ${SP.esc(b)} ${SP.prob(1 - p)}. The chance is 1 / (1 + 10^(gap / 400)), using a blend of overall and court-specific ratings${court === "bo5" ? ", stretched to best of five sets" : ""}.</p>`;
+      return;
+    }
+    const x = R[who], gap = ra + (venue === "home" ? x.hfa : 0) - rb;
+    const lh = x.base * Math.exp(x.slope * gap / 400), la = x.base * Math.exp(-x.slope * gap / 400);
+    const [h, d, aw] = SP.outcomeProbs(lh, la);
+    out.innerHTML = `<p>Ratings: ${SP.esc(a)} <b>${ra}</b>, ${SP.esc(b)} <b>${rb}</b>${venue === "home" ? ` (+${Math.round(x.hfa)} for home)` : ""}. Expected goals: <b>${lh.toFixed(2)}</b> to <b>${la.toFixed(2)}</b>.</p>
+      <div class="split" style="height:26px">${[[h, "h", a + " win"], [d, "d", "Draw"], [aw, "a", b + " win"]].map(([v, cls, n]) => `<div class="${cls}" style="flex:${v * 100} 1 0" title="${SP.esc(n)}">${v >= 0.12 ? SP.prob(v) : ""}</div>`).join("")}</div>
+      <p class="small muted">${SP.esc(a)} win ${SP.prob(h)} · draw ${SP.prob(d)} · ${SP.esc(b)} win ${SP.prob(aw)}</p>
+      ${SP.scoreGridHtml(lh, la, a, b)}`;
+  }
+  const seg = (id, set) => $(id).addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === btn));
+    set(btn.dataset.v);
+  });
+  seg("cmp-sport", v => { who = v; fill(); });
+  seg("cmp-venue", v => { venue = v; show(); });
+  seg("cmp-surface", v => { court = v; show(); });
+  $("cmp-a").addEventListener("input", show); $("cmp-b").addEventListener("input", show);
+  fill();
+})();

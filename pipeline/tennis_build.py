@@ -36,7 +36,17 @@ def is_slam(ev):
     return any(s in (ev["name"] or "") for s in config.GRAND_SLAMS)
 
 
-def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
+def h2h_index(matches):
+    """{frozenset(player, player): meetings, newest first}."""
+    out = {}
+    for m in matches:
+        out.setdefault(frozenset((m["a"], m["b"])), []).append(m)
+    for v in out.values():
+        v.sort(key=lambda m: m["date"] or "", reverse=True)
+    return out
+
+
+def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=None, event_names=None):
     rounds = main_draw(ev)
     finals = is_finals(ev)
     projected = None
@@ -129,7 +139,11 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None):
             if m["status"] in ("scheduled", "live") and m["a"] and m["b"]:
                 upcoming.append({"date": m["date"], "round": name, "a": m["an"], "b": m["bn"],
                                  "af": flag.get(m["a"]), "bf": flag.get(m["b"]),
-                                 "p": round(p_match(m["a"], m["b"]), 3), "live": m["status"] == "live"})
+                                 "p": round(p_match(m["a"], m["b"]), 3), "live": m["status"] == "live",
+                                 "r": [round(ratings.get(m["a"], 1500)), round(ratings.get(m["b"], 1500))],
+                                 "h2h": [{"date": x["date"], "event": (event_names or {}).get(x.get("event"), ""),
+                                          "round": x["round"], "winner": x["an"] if x["w"] == 0 else x["bn"]}
+                                         for x in (h2h or {}).get(frozenset((m["a"], m["b"])), [])[:5]]})
     calls = []  # every finished match in this event, judged against its pre-match prediction
     for m in finished:
         if m["id"] in elo.pre and m["w"] is not None:
@@ -251,6 +265,23 @@ def build(today_iso):
                             for pair in ((pr, int(m["w"] == 0)), (1 - pr, int(m["w"] == 1)))])}
         graded = grade_past_events(past, tour, elo, snaps)
         model[tour]["title_backtest"] = {"summary": tb.summarise(graded), "events": graded}
+        # for team pages and the compare tool: rating history (last year) and every rating by surface
+        since = (t - timedelta(days=365)).isoformat()
+        hist = {}
+        for m in matches:
+            if m["date"] >= since and m["id"] in elo.pre:
+                oa, ob, _, _ = elo.pre[m["id"]]
+                hist.setdefault(m["an"], []).append([day(m["date"]), round(oa)])
+                hist.setdefault(m["bn"], []).append([day(m["date"]), round(ob)])
+        for p, r in elo.ratings.items():
+            if elo.names.get(p) in hist:
+                hist[elo.names[p]].append([today_iso[:10], round(r)])
+        top = sorted(elo.ratings, key=lambda p: -elo.ratings[p])[:300]
+        model[tour]["_histories"] = hist
+        model[tour]["_ratings"] = {elo.names.get(p, p): [round(elo.ratings[p])] + [round(elo.surf[s].get(p, elo.init)) for s in ("hard", "clay", "grass")]
+                                   for p in top}
+        pair_index = h2h_index(matches)
+        event_names = {e["id"]: e["name"] for e in events}
         field = None
         if any(is_finals(ev) and not has_groups(ev) for ev in targets):
             try:
@@ -266,7 +297,7 @@ def build(today_iso):
                     comps.append(old)
                     continue
             print("  simulating %s %s" % (tour.upper(), ev["name"]))
-            comps.append(event_payload(ev, tour, elo, snaps, today_iso, field))
+            comps.append(event_payload(ev, tour, elo, snaps, today_iso, field, pair_index, event_names))
     return comps, model
 
 
