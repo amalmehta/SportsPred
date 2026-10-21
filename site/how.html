@@ -35,7 +35,7 @@
     <li><a href="#simulate">Play the rest out 10,000 times</a></li>
     <li><a href="#over-time">Odds over time</a></li>
     <li><a href="#accuracy">How accurate is it?</a> · <a href="#by-competition">by competition</a> · <a href="#calibration">calibration</a> · <a href="#favourites">did the favourites win?</a></li>
-    <li><a href="#data">Where the data comes from</a></li>
+    <li><a href="#data">Where the data comes from</a> · <a href="#status">data status</a></li>
     <li><a href="#limits">What it doesn't know</a></li>
   </ol></nav>
   <h2 id="ratings">1. Rate every team and player</h2>
@@ -72,7 +72,7 @@
     <li><b>International tournaments</b>: finish the groups (the table shows each team's chance of getting out of its group), then the knockout bracket.</li>
     <li><b>World Cup qualifying</b>: finish each group table and count how often a team lands in a qualifying place, a playoff place, or top spot, using each confederation's places (for example, in Europe the winner qualifies and the runner-up goes to the playoffs; in South America the top six qualify). These pages appear on their own while qualifiers are being played; 2030 qualifying hadn't been scheduled as of October 2026.</li>
     <li><b>Tennis</b>: play the rest of the draw round by round.</li>
-    <li><b>ATP and WTA Finals</b>: two round-robin groups of four (most wins first, a two-way tie goes to head-to-head), then semi-finals (group winner against the other group's runner-up) and a final. Before the groups are drawn, the field is projected from the current top 8 in the rankings and the draw is simulated too.</li>
+    <li><b>ATP and WTA Finals</b>: two round-robin groups of four (most wins first, a two-way tie goes to head-to-head, a three-way tie to the share of sets won), then semi-finals (group winner against the other group's runner-up) and a final. Before the groups are drawn, the field is projected from the current top 8 in the rankings and the draw is simulated too.</li>
   </ul>
   <p>A team's title chance is simply how often it won across those 10,000 runs.</p>
   <p>Some things need no simulation. Once arithmetic alone settles a race (a team can't be caught even if it loses every game left, or can't catch up even if it wins them all), the table says <b>Sure</b> or <b>Out</b> instead of a percentage. That check ignores the games between rivals, so it never calls a race early. League tables also show <b>points against expectation</b> (points won minus what each game's pre-match chances were worth) and the <b>run-in</b>: how many points a team of the league's average rating would expect from each side's remaining fixtures. In tennis, the same runs give the <b>likeliest final</b>.</p>
@@ -109,6 +109,10 @@
     <li>International results since 1872: <a href="https://github.com/martj42/international_results">martj42/international_results</a>.</li>
   </ul>
 
+  <h3 id="status">Data status</h3>
+  <p>When each competition was last rebuilt. Updates run about hourly; one whose source didn't answer keeps its last good predictions and is marked here.</p>
+  <div class="panel" style="padding:4px 8px" id="status-table"><div class="muted" style="padding:12px">Loading…</div></div>
+
   <p><b>Use the data:</b> every number here comes from JSON files anyone can read, for example <a href="data/index.json">data/index.json</a> (every competition) and one file per competition and per team. The <a href="https://github.com/amalmehta/SportsPred/blob/main/docs/INSTRUCTIONS.md#use-the-data">instructions</a> list them all. There's also a <a href="feed.xml">feed</a> of upsets and big moves.</p>
 
   <h2 id="limits">7. What it doesn't know</h2>
@@ -116,7 +120,7 @@
     <li>Injuries, suspensions, rotation, transfers and managers: only results go in.</li>
     <li>Tennis surfaces come from a list of tournament names (ESPN doesn't publish them); unlisted events count as hard court, and indoor and outdoor hard courts are treated alike.</li>
     <li>ESPN doesn't publish draw positions, so open slots in a tennis bracket are filled from the right round but not always the exact half of the draw. UEFA knockouts follow the real format (seeded playoff pools, a fixed bracket from the round of 16, real ties and results once they're drawn); only pairings not yet drawn are random within their pool.</li>
-    <li>Points deductions aren't modelled. Head-to-head tie-breakers are used where they come first (La Liga, Serie A); Serie A's playoff for a tie on top or in the last relegation place isn't. At the tennis Finals, three-way ties are split at random rather than by sets and games won.</li>
+    <li>Points deductions aren't modelled. Head-to-head tie-breakers are used where they come first (La Liga, Serie A); Serie A's playoff for a tie on top or in the last relegation place isn't. At the tennis Finals, three-way ties go to the share of sets won, but not then to games won.</li>
     <li>World Cup qualifying places follow the 2026 cycle until FIFA confirms 2030's, and "best runners-up" rules (Africa, North &amp; Central America) are simplified to "every runner-up".</li>
     <li>Before a Grand Slam or 1000-level draw is out, odds are projected from the top 64 in the rankings with a seeded random draw; byes, qualifiers and withdrawals aren't modelled until the real draw appears.</li>
     <li>The projected Finals field uses the 52-week rankings because ESPN doesn't publish the Race; withdrawals and alternates only show up once the real draw does.</li>

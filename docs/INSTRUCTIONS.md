@@ -77,7 +77,7 @@ python3 -m unittest discover -s tests
 
 - **Home page:** one card per competition with the current favourite and their chance to win, and the runner-up beneath. Use the chips to show only soccer or only tennis, or type in **Find a team or player** to see every competition someone is in and their chances.
 - **Competition page:** the favourite, a chart of title odds over the season or tournament (hover for exact values, or **Show as table** for every day's numbers), the season's track record, every team's or player's chances, upcoming matches with win/draw/loss chances, and recent results marked "Called it" or "Missed".
-- **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent or decimal odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
+- **Settings:** the gear button, or ⌘, (Ctrl+, on Windows and Linux). Choose appearance, percent, decimal or fractional odds, local time or UTC, what the home page shows first, and whether finished events are listed. Settings are saved in your browser.
 - **Feedback:** the small tab on the right edge (a button in the corner on phones) opens a pre-filled GitHub issue.
 - **Settled races:** once arithmetic alone decides a race, league tables say **Sure** or **Out** (and **Safe** or **Down** for relegation) instead of a percentage, with a badge such as "Title won" next to the team.
 - **Points vs expected** (league tables, wider screens): points won minus what each game's pre-match chances were worth. Plus means a team is ahead of its results so far. A line under the table names who's most ahead and behind.
@@ -86,6 +86,13 @@ python3 -m unittest discover -s tests
 - **Matches that matter at the bottom:** league pages also show the games that swing the relegation fight most.
 - **Points needed:** league pages show roughly how many points the title, the top places and safety will take, and the table shows each team's likely finishing range.
 - **Season so far:** a folded section on soccer pages lists the season's biggest upsets and whose rating has risen or fallen most in the last 30 days. Recent results show **Exact score** when the likeliest score came up.
+- **Turning points:** under the odds chart, the biggest jumps and the results behind them.
+- **Share a What if:** after picking results, **Copy link to these picks** gives a link that opens the page with the same picks played out.
+- **Tightest title races:** the home page lists the closest races between favourite and runner-up.
+- **Team pages** also show the chance of each finishing place as small bars.
+- **Data status:** How It Works lists when each competition was last rebuilt.
+- **Print:** pages print without the header, buttons and folded sections.
+- **Tennis scores:** recent results show the games in each set.
 - **Save image:** under the odds chart, saves it as a PNG with a title and legend.
 - **Waiting on an opponent:** tennis pages list matches where one player is through and the other isn't known yet, with each possible opponent's chance.
 - **Feed:** subscribe to `feed.xml` (linked in the footer) in a feed reader for the week's upsets, the day's biggest odds moves and new champions.

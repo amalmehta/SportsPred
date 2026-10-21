@@ -370,3 +370,21 @@ table.keys kbd { font-size: 12px; padding: 1px 6px; color: var(--text); }
 ul.trend { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }
 ul.trend li { display: flex; justify-content: space-between; gap: 12px; max-width: 280px; font-variant-numeric: tabular-nums; }
 details.fold h3 { margin: 16px 0 8px; font-size: 15px; }
+.turns { margin: 6px 0 0; color: var(--text-2); }
+.turns ul { margin: 4px 0 0; padding-left: 18px; }
+.turns li { margin: 2px 0; }
+.match .sets { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.places { display: flex; align-items: flex-end; gap: 2px; height: 28px; margin-top: 6px; }
+.places i { display: block; width: 8px; background: var(--s1); border-radius: 2px 2px 0 0; opacity: .85; }
+
+/* printing: just the content, black on white */
+@media print {
+  header.top, footer, .fb-tab, .chip, .btn, .star, .search, .filters, #share, .legend button { display: none !important; }
+  :root, body { background: #fff !important; color: #000 !important; }
+  .panel, .card, .match, .mover, .stat { box-shadow: none !important; border-color: #bbb !important; break-inside: avoid; }
+  a { color: #000 !important; text-decoration: none !important; }
+  .table-wrap { overflow: visible !important; }
+  th, td { white-space: normal !important; }
+  .opt { display: table-cell !important; }
+  details.fold:not([open]) { display: none; }
+}

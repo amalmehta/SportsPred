@@ -187,7 +187,8 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
             p = best_of_five(p) if bo5 else p
             recent.append({"date": m["date"], "round": m["round"], "a": m["an"], "b": m["bn"], "w": m["w"],
                            "af": flag.get(m["a"]), "bf": flag.get(m["b"]),
-                           "p": round(p, 3), "called": (p >= 0.5) == (m["w"] == 0)})
+                           "p": round(p, 3), "called": (p >= 0.5) == (m["w"] == 0), "sc": m.get("sc"),
+                           "ret": m["status"] if m["status"] in ("retired", "walkover") else None})
 
     # the likeliest finals, from the same simulations (not once the final is set)
     likely_final = [{"a": players.get(a, a), "b": players.get(b, b), "p": round(p, 4)}

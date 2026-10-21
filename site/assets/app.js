@@ -46,9 +46,26 @@ const SP = (() => {
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
+  // fractional odds as a bookmaker would write them: the nearest of the usual prices (5/2, 11/10, 1/3...)
+  const PRICES = (() => {
+    const list = [[1, 1]];
+    [[1, 10], [1, 8], [1, 6], [1, 5], [1, 4], [2, 7], [1, 3], [4, 11], [2, 5], [4, 9], [1, 2], [8, 15], [4, 7], [8, 13], [4, 6],
+     [8, 11], [4, 5], [5, 6], [10, 11], [20, 21]].forEach(([a, b]) => list.push([a, b], [b, a]));
+    [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 25, 33, 40, 50, 66, 80, 100, 150, 200, 250, 500].forEach(n => list.push([n, 1], [1, n]));
+    [[5, 2], [7, 2], [9, 2], [13, 2], [15, 2], [11, 4], [13, 8], [15, 8], [6, 5]].forEach(([a, b]) => list.push([a, b], [b, a]));
+    return list;
+  })();
+  function fractional(p) {
+    if (p <= 0) return "—";
+    if (p >= 0.995) return "1/200";
+    const want = (1 - p) / p;
+    const [a, b] = PRICES.reduce((best, x) => Math.abs(Math.log(x[0] / x[1] / want)) < Math.abs(Math.log(best[0] / best[1] / want)) ? x : best);
+    return a === b ? "Evens" : `${a}/${b}`;
+  }
   function prob(p) {
     if (p == null) return "–";
     if (settings.odds === "decimal") return p <= 0 ? "—" : (p >= 0.995 ? "1.00" : (1 / p).toFixed(p > 0.1 ? 2 : 1));
+    if (settings.odds === "fractional") return fractional(p);
     if (p > 0 && p < 0.005) return "<1%";
     if (p < 1 && p > 0.995) return ">99%";
     return Math.round(p * 100) + "%";
@@ -154,7 +171,7 @@ const SP = (() => {
 
   const OPTIONS = [
     ["theme", "Appearance", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]],
-    ["odds", "Show chances as", [["percent", "Percent (54%)"], ["decimal", "Decimal odds (1.85)"]]],
+    ["odds", "Show chances as", [["percent", "Percent (54%)"], ["decimal", "Decimal odds (1.85)"], ["fractional", "Fractional (5/6)"]]],
     ["times", "Kick-off times", [["local", "My time zone"], ["utc", "UTC"]]],
     ["start", "Home page shows", [["all", "Everything"], ["soccer", "Soccer"], ["tennis", "Tennis"]]],
     ["finished", "Finished events", [["show", "Show"], ["hide", "Hide"]]],

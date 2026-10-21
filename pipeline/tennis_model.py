@@ -16,17 +16,30 @@ def win_prob(ra, rb):
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
 
 
-def best_of_five(p3):
-    """Turn a best-of-3 match win chance into best-of-5 via the implied per-set chance."""
+def set_prob(p3):
+    """The chance of winning a set implied by a best-of-3 match chance: solve p3 = s^2 (3 - 2s)."""
     lo, hi = 0.0, 1.0
-    for _ in range(50):  # solve p3 = s^2 (3 - 2s) for the set-win chance s
+    for _ in range(50):
         s = (lo + hi) / 2
         if s * s * (3 - 2 * s) < p3:
             lo = s
         else:
             hi = s
-    s, q = (lo + hi) / 2, 1 - (lo + hi) / 2
+    return (lo + hi) / 2
+
+
+def best_of_five(p3):
+    """Turn a best-of-3 match win chance into best-of-5 via the implied per-set chance."""
+    s = set_prob(p3)
+    q = 1 - s
     return s ** 3 * (1 + 3 * q + 6 * q * q)
+
+
+def sets_won(sc):
+    """Sets won by each player from a score like [[6, 3], [6, 7], [7, 5]] -> (2, 1)."""
+    a = sum(1 for x, y in sc or [] if x > y)
+    b = sum(1 for x, y in sc or [] if y > x)
+    return a, b
 
 
 SURFACES = ("hard", "clay", "grass")
@@ -416,14 +429,29 @@ def as_of_rr(event, d):
 
 
 def _standings(players, results, rng):
-    """Order a group: most wins first; two players level on wins split by head-to-head; else random."""
+    """Order a group as the tours do: most wins; two players level on wins split by head-to-head;
+    three or more level split by the share of sets won (then at random).
+
+    results: (winner, loser) or (winner, loser, (sets won by winner, sets won by loser)).
+    """
     wins = {p: 0 for p in players}
+    sets = {p: [0, 0] for p in players}  # sets won, sets played
     h2h = {}
-    for w, l in results:
+    for r in results:
+        w, l = r[0], r[1]
         if w in wins:
             wins[w] += 1
         h2h[(w, l)] = True
-    order = sorted(players, key=lambda p: (-wins[p], rng.random()))
+        if len(r) > 2 and r[2]:
+            for p, won in ((w, r[2][0]), (l, r[2][1])):
+                if p in sets:
+                    sets[p][0] += won
+                    sets[p][1] += r[2][0] + r[2][1]
+    level = {}
+    for p in players:
+        level.setdefault(wins[p], []).append(p)
+    share = lambda p: sets[p][0] / float(sets[p][1]) if sets[p][1] else 0.0
+    order = sorted(players, key=lambda p: (-wins[p], -share(p) if len(level[wins[p]]) >= 3 else 0, rng.random()))
     for i in range(len(order) - 1):
         a, b = order[i], order[i + 1]
         level = [p for p in order if wins[p] == wins[a]]
@@ -448,6 +476,15 @@ def simulate_finals(matches, ratings, n, seed, projected=None, finals=None):
         if (a, b) not in cache:
             cache[(a, b)] = win_prob(ratings.get(a, default), ratings.get(b, default))
         return rng.random() < cache[(a, b)]
+
+    def play_sets(a, b):
+        """A best-of-3 group match set by set: (winner, loser, (sets won by winner, by loser))."""
+        if ("s", a, b) not in cache:
+            cache[("s", a, b)] = set_prob(win_prob(ratings.get(a, default), ratings.get(b, default)))
+        s, won = cache[("s", a, b)], [0, 0]
+        while max(won) < 2:
+            won[0 if rng.random() < s else 1] += 1
+        return (a, b, tuple(won)) if won[0] == 2 else (b, a, (won[1], won[0]))
 
     group_ms = [m for m in matches if is_group_match(m) and m["a"] and m["b"]]
     semis = [m for m in matches if (m["round"] or "").lower().startswith("semi")]
@@ -489,14 +526,17 @@ def simulate_finals(matches, ratings, n, seed, projected=None, finals=None):
             pairs = {frozenset((m["a"], m["b"])) for m in listed}
             results = []
             for m in listed:
-                w = winner(m)
-                results.append((w, m["b"] if w == m["a"] else m["a"]))
+                if finished(m):
+                    w = m["a"] if m["w"] == 0 else m["b"]
+                    sa, sb = sets_won(m.get("sc"))
+                    results.append((w, m["b"] if w == m["a"] else m["a"], (sa, sb) if m["w"] == 0 else (sb, sa)))
+                else:
+                    results.append(play_sets(m["a"], m["b"]))
             if len(g) == 4:  # every pair meets once; simulate pairings ESPN hasn't listed yet
                 for i in range(4):
                     for j in range(i + 1, 4):
                         if frozenset((g[i], g[j])) not in pairs:
-                            w = g[i] if beats(g[i], g[j]) else g[j]
-                            results.append((w, g[j] if w == g[i] else g[i]))
+                            results.append(play_sets(g[i], g[j]))
             top.append(_standings(g, results, rng)[:2])
         if len(top) < 2 or any(len(t) < 2 for t in top):
             continue

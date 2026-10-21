@@ -351,6 +351,24 @@ def trend(teams, names, elo, history, today_iso, days=30, keep=3, min_change=10)
     return {"days": days, "up": up, "down": down} if up or down else None
 
 
+def turning_points(series_days, series, top, fin, names, keep=4, min_move=0.05):
+    """The biggest jumps in the title (or qualifying) odds between two points of the chart, each with
+    the team's own result in between when it played (other results can move a team's odds too)."""
+    moves = []
+    for t in top:
+        for i in range(1, len(series)):
+            a, b = series[i - 1].get(t, 0.0), series[i].get(t, 0.0)
+            if abs(b - a) >= min_move:
+                lo, hi = series_days[i - 1], series_days[i]
+                game = next((m for m in sorted(fin, key=lambda m: m["date"], reverse=True)
+                             if lo < day(m["date"]) <= hi and t in (m["home_key"], m["away_key"])), None)
+                moves.append({"team": names.get(t, t), "date": hi, "before": round(a, 3), "after": round(b, 3),
+                              "game": {"home": names.get(game["home_key"], game["home"]), "away": names.get(game["away_key"], game["away"]),
+                                       "hg": game["hg"], "ag": game["ag"]} if game else None})
+    moves.sort(key=lambda x: -abs(x["after"] - x["before"]))
+    return sorted(moves[:keep], key=lambda x: x["date"])
+
+
 def rating_index(finished, elo):
     """{team key: [(date, rating before the match), ...]} in date order, for trend()."""
     out = {}
@@ -517,6 +535,7 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         "next_match": upcoming[0]["date"] if upcoming else None,
         "record": dict(track_record(calls), exact=exact) if calls else None,
         "shocks": shocks, "trend": trend(teams, names, elo, history, today_iso),
+        "turns": turning_points(series_days, series, top, fin, names),
         "hfa": hfa, "rho": gm.rho,
         "swings": named_swings(now.get("swings", []), todo, names),
         "drop_swings": named_swings(now.get("drop_swings", []), todo, names),

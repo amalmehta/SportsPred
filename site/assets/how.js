@@ -33,7 +33,7 @@ function byCompetition(m) {
   const box = document.getElementById("by-comp");
   if (!rows.length) { box.hidden = true; return; }
   const pct = v => Math.round(v * 100) + "%", top = Math.max(...rows.map(r => r.skill));
-  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Competition</th><th class="num opt">Matches</th>
+  box.innerHTML = `<div class="table-wrap" tabindex="0" role="region" aria-label="Accuracy by competition"><table><thead><tr><th>Competition</th><th class="num opt">Matches</th>
     <th class="num" title="How often the result we rated likeliest happened">Called</th>
     <th class="num" title="Soccer: always picking the commonest result. Tennis: a coin toss.">Baseline</th>
     <th class="num" title="How much lower our log loss is than the baseline's">Skill</th>
@@ -45,6 +45,22 @@ function byCompetition(m) {
     </tbody></table></div>`;
 }
 
+// every competition with when it was last rebuilt, oldest first, so a stuck one stands out
+(async () => {
+  const box = document.getElementById("status-table");
+  if (!box) return;
+  let index;
+  try { index = await SP.json("data/index.json"); } catch (e) { box.innerHTML = '<div class="muted" style="padding:12px">Run the build to see this.</div>'; return; }
+  const list = [...index.competitions].sort((a, b) => String(a.updated || "").localeCompare(String(b.updated || "")));
+  const hours = iso => (Date.now() - new Date(iso && iso.length === 17 ? iso.replace("Z", ":00Z") : iso)) / 3600000;
+  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Competition</th><th>Status</th><th>Last rebuilt</th><th>Data</th></tr></thead><tbody>
+    ${list.map(c => `<tr><td><a href="competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}">${SP.esc(c.name)}</a>${c.tour ? ` <span class="muted">${SP.esc(c.tour)}</span>` : ""}</td>
+      <td>${SP.esc({ live: "Live", upcoming: "Upcoming", finished: "Finished" }[c.status] || c.status || "")}</td>
+      <td title="${SP.esc(SP.when(c.updated))}">${SP.esc(SP.ago(c.updated))}</td>
+      <td>${c.stale ? '<b>Not refreshed</b> <span class="muted">(last good copy)</span>' : hours(c.updated) > 6 ? "<b>Late</b>" : '<span class="muted">OK</span>'}</td></tr>`).join("")}
+    </tbody></table></div><p class="small muted" style="margin:8px 4px">Whole site last updated ${SP.esc(SP.ago(index.updated))}.</p>`;
+})();
+
 function titleRecord(m) {
   const t = m.tennis || {};
   const groups = [["Club soccer seasons", m.soccer_clubs], ["ATP tournaments", t.atp], ["WTA tournaments", t.wta]]
@@ -55,7 +71,7 @@ function titleRecord(m) {
   box.innerHTML = groups.map(([label, b]) => { const s = b.summary; return `<div class="stat"><b>${s.favourite_won} of ${s.n}</b>
     <span>${label}: won by the favourite · champion in our top 3 ${s.winner_in_top3} times · we gave the champion ${pct(s.avg_p_winner)} on average (${pct(s.avg_p_baseline)} if everyone were equal)</span></div>`; }).join("");
   const rows = groups.flatMap(([label, b]) => b.events.map(e => Object.assign({ group: label }, e)));
-  document.getElementById("titles-table").innerHTML = `<div class="table-wrap"><table><thead><tr><th>Event</th><th>Champion</th>
+  document.getElementById("titles-table").innerHTML = `<div class="table-wrap" tabindex="0" role="region" aria-label="Every season and tournament graded"><table><thead><tr><th>Event</th><th>Champion</th>
     <th class="num">Our pre-event chance</th><th class="num">Our rank</th><th>Our favourite</th></tr></thead><tbody>
     ${rows.map(e => `<tr><td>${SP.esc(e.name)} <span class="muted">${SP.esc(e.season)}</span></td><td>${SP.esc(e.winner)}</td>
       <td class="num">${SP.prob(e.p_winner)}</td><td class="num">${e.rank === 1 ? "1st" : e.rank === 2 ? "2nd" : e.rank === 3 ? "3rd" : e.rank + "th"}</td>

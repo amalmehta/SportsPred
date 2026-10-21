@@ -109,12 +109,16 @@ def team_pages(summaries, histories, out_dir=None):
         part = "tennis" if c["sport"] == "tennis" else ("international" if c.get("group") in ("international", "qualifying") else "clubs")
         where = {"id": c["id"], "sport": c["sport"], "name": c["name"], "group": c.get("group"), "status": c.get("status")}
         hard = {x["team"]: i + 1 for i, x in enumerate(c.get("run_in") or [])}  # 1 = hardest games left
+        grid = c.get("positions") or {}
+        place = dict(zip(grid.get("teams", []), grid.get("p", [])))  # team -> chance of each finishing place
         for r in c.get("table", []):
             p = people.setdefault((c["sport"], r[who]), {"name": r[who], "sport": c["sport"], "part": part, "flag": r.get("flag"),
                                                          "comps": [], "upcoming": [], "recent": []})
             extra = {k: r[k] for k in ("sure", "xpts", "pts", "p_adv", "p_ko", "reach", "range") if r.get(k) is not None}
             if r[who] in hard:
                 extra["run_in"] = [hard[r[who]], len(hard)]
+            if r[who] in place and c.get("status") != "finished":
+                extra["places"] = place[r[who]]
             p["comps"].append(dict(where, p=r.get(key, 0.0), what="qualify" if key == "p_qualify" else "win",
                                    p_top=r.get("p_top"), p_drop=r.get("p_drop"), out=r.get("alive") is False,
                                    top=(c.get("places") or {}).get("top"), **extra))

@@ -250,7 +250,8 @@
 
   function matchRow(m, past) {
     if (tennis) {
-      const pA = m.p, names = `<div class="teams"><span>${SP.flag(m.af)}${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span><span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}${SP.flag(m.bf)}</span></div>`;
+      const sc = past && m.sc && m.sc.length ? ` <b class="sets" title="Games in each set">${m.sc.map(([x, y]) => `${x}–${y}`).join(" ")}</b> ` : "";
+      const pA = m.p, names = `<div class="teams"><span>${SP.flag(m.af)}${SP.esc(m.a)}${past && m.w === 0 ? " ✓" : ""}</span>${sc}<span>${past && m.w === 1 ? "✓ " : ""}${SP.esc(m.b)}${SP.flag(m.bf)}</span></div>`;
       const meta = past ? SP.verdictBadge(m, "tennis") : stateBadge(m);
       return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}<br>${SP.esc(m.round)}</div>${names}
         <div class="split">${seg(pA, "h", m.a)}${seg(1 - pA, "a", m.b)}</div>
@@ -322,6 +323,17 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  // the biggest jumps in the chart, with the result behind each one
+  function turnsHtml() {
+    const list = c.turns || [];
+    if (!list.length) return "";
+    const what = qualifying ? "to qualify" : "to win";
+    return `<div class="turns small"><b>Turning points</b><ul>${list.map(x => `<li><span class="muted">${SP.esc(SP.date(x.date + "T12:00Z"))}</span>
+      ${SP.esc(x.team)} ${x.after > x.before ? "▲" : "▼"} ${SP.prob(x.before)} → <b>${SP.prob(x.after)}</b> ${what}${x.game
+        ? ` · their game: ${SP.esc(x.game.home)} ${x.game.hg}–${x.game.ag} ${SP.esc(x.game.away)}` : " · on other results"}</li>`).join("")}</ul>
+      <p class="muted" style="margin:2px 0 0">Rivals' results move the odds too, so a win can still come with a drop.</p></div>`;
+  }
+
   // the chart in words: where the leading contenders started and where they are now
   function chartSummary() {
     const h = c.history;
@@ -348,7 +360,8 @@
       <p class="small muted" style="margin-top:0">Pick results for the next games and replay the rest of the season 2,000 times in your browser. Unpicked games are left to the model.</p>
       ${next.map((f, k) => `<div class="wi-row"><span class="wi-teams">${SP.esc(w.teams[f[0]])} v ${SP.esc(w.teams[f[1]])}</span>
         <span class="seg small">${opt(k, -1, "Model")}${opt(k, 0, "Home win")}${opt(k, 1, "Draw")}${opt(k, 2, "Away win")}</span></div>`).join("")}
-      <p><button class="btn" id="wi-run" type="button">Play out the season</button> <button class="chip" id="wi-reset" type="button">Reset</button></p>
+      <p><button class="btn" id="wi-run" type="button">Play out the season</button> <button class="chip" id="wi-reset" type="button">Reset</button>
+        <button class="chip" id="wi-share" type="button" title="Copy a link that opens this page with your picks">Copy link to these picks</button></p>
       <div id="wi-out" aria-live="polite">${whatifResult || ""}</div></details>`;
   }
 
@@ -401,7 +414,8 @@
     whatifResult = `<div class="table-wrap"><table><thead><tr><th>Team</th><th class="num">Win title</th>${w.top ? `<th class="num">Top ${w.top}</th>` : ""}${w.drop ? '<th class="num">Relegated</th>' : ""}</tr></thead><tbody>
       ${show.map(r => `<tr><td>${SP.esc(r.t)}</td><td class="num">${cell(r.win, r.was.p_win)}</td>${w.top ? `<td class="num">${cell(r.top, r.was.p_top)}</td>` : ""}${w.drop ? `<td class="num">${cell(r.drop, r.was.p_drop)}</td>` : ""}</tr>`).join("")}
       </tbody></table></div><p class="small muted">Picked results count as 1–0 or 0–0. Ties on points are split ${w.tiebreak === "h2h" ? "by the games between the teams level on points, then goal difference" : "by goal difference, then goals scored"}, as in the league. Brackets show the site's current odds.</p>`;
-    document.getElementById("wi-out").innerHTML = whatifResult;
+    const box = document.getElementById("wi-out");
+    if (box) box.innerHTML = whatifResult;
   }
 
   document.addEventListener("click", e => {
@@ -415,6 +429,15 @@
     if (e.target.id === "wi-run") {
       e.target.disabled = true; e.target.textContent = "Simulating…";
       setTimeout(() => { runWhatif(); e.target.disabled = false; e.target.textContent = "Play out the season"; }, 30);
+    }
+    if (e.target.id === "wi-share") {
+      // each pick as home-away team numbers and the result, so the link still means the same games after an update
+      const f = c.whatif.fixtures;
+      const url = location.href.split("#")[0] + "#whatif=" + Object.entries(picks).map(([k, v]) => `${f[k][0]}-${f[k][1]}.${v}`).join(",");
+      const b = e.target;
+      navigator.clipboard.writeText(url).then(() => { b.textContent = "Link copied"; }, () => { b.textContent = "Copy failed"; })
+        .then(() => setTimeout(() => { b.textContent = "Copy link to these picks"; }, 2000));
+      history.replaceState(null, "", url);
     }
     if (e.target.id === "wi-reset") { Object.keys(picks).forEach(k => delete picks[k]); whatifResult = null; const y = scrollY; render(); scrollTo(0, y); }
   });
@@ -458,7 +481,7 @@
       ${likelyFinal()}
       <h2>${tennis ? "Title odds over the tournament" : qualifying ? "Chance to qualify over the campaign: the races that moved most" : "Title odds over the season"}</h2>
       <div class="panel">${canChart ? `<div class="chart-box" ${asTable ? 'hidden' : ""}><canvas id="chart" role="img" aria-label="Chance to win over time" aria-describedby="chart-sum"></canvas></div>
-        <p class="small chart-sum" id="chart-sum">${chartSummary()}</p>
+        <p class="small chart-sum" id="chart-sum">${chartSummary()}</p>${turnsHtml()}
         <div id="chart-table" ${asTable ? "" : "hidden"}>${chartTable()}</div>
         <div class="legend" id="legend"></div>
         <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button>${asTable ? "" : ' <button class="chip" id="save-chart" type="button" title="Download the chart as a PNG image">Save image</button>'}</div>`
@@ -584,7 +607,7 @@
     const live = (c.live || []).filter(e => e.p);
     const colors = Array.from({ length: 8 }, (_, i) => css(`--s${i + 1}`));
     const text2 = css("--text-2"), border = css("--border"), surface = css("--surface");
-    const pct = SP.settings().odds === "percent";
+    const pct = SP.settings().odds !== "decimal";  // fractional odds read badly on an axis: percent there
     // one x-axis for both: replay days (lines) and days the site published odds (dots)
     const dates = [...new Set([...h.dates, ...live.map(e => e.date)])].sort();
     const at = (ds, vs) => { const m = new Map(ds.map((d, i) => [d, vs[i]])); return dates.map(d => m.has(d) ? m.get(d) * 100 : null); };
@@ -635,5 +658,17 @@
 
   SP.onChange(render);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  // a shared What if link (#whatif=3-11.2,...: home-away team numbers and the result): set the picks still
+  // among the next ten games and play the season out straight away
+  const shared = (location.hash.match(/whatif=([\d.,-]*)/) || [])[1];
+  if (shared && c.whatif) {
+    const next = c.whatif.fixtures.slice(0, 10);
+    shared.split(",").filter(Boolean).forEach(x => {
+      const [pair, v] = x.split("."), [h, a] = pair.split("-").map(Number), k = next.findIndex(f => f[0] === h && f[1] === a);
+      if (k >= 0 && +v >= 0 && +v <= 2) picks[k] = +v;
+    });
+    if (Object.keys(picks).length) runWhatif();
+  }
   render();
+  if (shared && c.whatif) { const w = document.querySelector("details.whatif"); if (w) w.scrollIntoView(); }
 })();

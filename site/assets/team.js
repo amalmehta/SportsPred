@@ -36,6 +36,14 @@
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   const ROUND = { r16: "last 16", qf: "quarter-finals", sf: "semi-finals", f: "final" };
+  // chance of each finishing place, as a row of small bars (1st on the left)
+  function placesBar(e) {
+    const p = e.places;
+    if (!p || !p.length) return "";
+    const top = Math.max(...p);
+    return `<span class="places" role="img" aria-label="${SP.esc(p.map((v, i) => `${ordinal(i + 1)} ${SP.prob(v)}`).filter((_, i) => p[i] >= 0.01).join(", "))}">${p.map((v, i) =>
+      `<i style="height:${Math.max(2, 26 * v / top)}px" title="${ordinal(i + 1)}: ${SP.prob(v)}"></i>`).join("")}</span>`;
+  }
   function compRow(e) {
     const s = e.sure || {}, gap = e.xpts != null && e.pts != null ? e.pts - e.xpts : null;
     const reach = e.reach && !e.out ? Object.entries(e.reach).filter(([k, v]) => ROUND[k] && v > 0 && v < 0.999).slice(-2)
@@ -55,7 +63,7 @@
       : s.title === false && e.what === "win" ? `<span class="muted">Can't win the title</span>`
       : `<span class="pct">${SP.prob(e.p)}</span> <span class="muted small">to ${e.what}</span>`;
     return `<a class="mover" href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}"><span>${SP.tagFor({ id: e.id, group: e.group, sport: e.sport })}</span>
-      <span><b>${SP.esc(e.name)}</b>${extra ? `<span class="muted small"> · ${extra}</span>` : ""}</span><span class="num">${odds}</span></a>`;
+      <span><b>${SP.esc(e.name)}</b>${extra ? `<span class="muted small"> · ${extra}</span>` : ""}${placesBar(e)}</span><span class="num">${odds}</span></a>`;
   }
 
   // a match from this team's point of view: who they play and their own chances

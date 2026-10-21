@@ -488,5 +488,31 @@ class RoundNineTests(unittest.TestCase):
         self.assertAlmostEqual(opp["P3"], 1 / (1 + 10 ** (-200 / 400.0)), delta=0.03)
 
 
+class RoundTenTests(unittest.TestCase):
+    def test_three_way_tie_goes_to_share_of_sets(self):
+        from pipeline.tennis_model import _standings, sets_won
+        self.assertEqual(sets_won([[6, 3], [6, 7], [7, 5]]), (2, 1))
+        # X, Y, Z all 2-1; W 0-3. X won its matches in straight sets, Z needed three every time
+        results = [("X", "Y", (2, 0)), ("Y", "Z", (2, 0)), ("Z", "X", (2, 1)),
+                   ("X", "W", (2, 0)), ("Y", "W", (2, 1)), ("Z", "W", (2, 1))]
+        for seed in range(20):
+            order = _standings(["W", "X", "Y", "Z"], results, random.Random(seed))
+            self.assertEqual(order[:3], ["X", "Y", "Z"])  # sets: X 5/7, Y 4/7, Z 4/8
+            self.assertEqual(order[3], "W")
+
+    def test_turning_points_name_the_result_behind_each_jump(self):
+        fin = [{"date": "2026-09-05T15:00Z", "home_key": "A", "away_key": "B", "home": "A", "away": "B", "hg": 0, "ag": 3},
+               {"date": "2026-09-12T15:00Z", "home_key": "C", "away_key": "D", "home": "C", "away": "D", "hg": 1, "ag": 0}]
+        days = ["2026-09-01", "2026-09-05", "2026-09-12"]
+        series = [{"A": 0.6, "B": 0.3}, {"A": 0.4, "B": 0.5}, {"A": 0.48, "B": 0.5}]
+        turns = soccer_build.turning_points(days, series, ["A", "B"], fin, {})
+        self.assertEqual(len(turns), 3)  # A down 20, B up 20, A up 8; nothing for B's flat week
+        a_drop = next(t for t in turns if t["team"] == "A" and t["after"] < t["before"])
+        self.assertEqual((a_drop["date"], a_drop["game"]["ag"]), ("2026-09-05", 3))
+        a_rise = next(t for t in turns if t["team"] == "A" and t["after"] > t["before"])
+        self.assertIsNone(a_rise["game"])  # A didn't play: other results moved it
+        self.assertEqual([t["date"] for t in turns], sorted(t["date"] for t in turns))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -84,6 +84,17 @@
         `<a href="competition.html?sport=${e.sport}&id=${encodeURIComponent(e.id)}">${SP.esc(e.name)}: ${e.out ? "out" : SP.prob(e.p) + " to " + e.what}</a>`).join(" · ")}</span></div>`).join("")}</div>`;
   }
 
+  // the closest races: competitions still being played where the favourite's lead over the runner-up is smallest
+  function tightest() {
+    const list = index.competitions.filter(c => c.status !== "finished" && c.favourite && c.second && c.format !== "qualifying" && !c.projected)
+      .filter(c => sport === "all" || c.sport === sport)
+      .sort((a, b) => (a.favourite.p - a.second.p) - (b.favourite.p - b.second.p)).slice(0, 4);
+    if (list.length < 2) return "";
+    return `<h2>Tightest title races</h2><div class="movers">${list.map(c => `<a class="mover" href="competition.html?sport=${c.sport}&id=${encodeURIComponent(c.id)}">
+      <span class="arrow" aria-hidden="true">≈</span><span><b>${SP.esc(c.name)}</b>${c.sport === "tennis" && c.tour ? `<span class="muted small"> · ${SP.esc(c.tour)}</span>` : ""}</span>
+      <span class="small">${SP.esc(c.favourite.name)} <b>${SP.prob(c.favourite.p)}</b> · ${SP.esc(c.second.name)} <b>${SP.prob(c.second.p)}</b></span></a>`).join("")}</div>`;
+  }
+
   function digestHtml() {
     const pick = x => sport === "all" || x.sport === sport;
     // hide games that have probably finished since the last update; flag ones under way by the clock
@@ -150,7 +161,7 @@
     const live = index.competitions.filter(c => c.status === "live").length;
     const soon = (digest.matches || []).filter(m => SP.matchState(m.date, m.live, m.sport) !== "done").length;
     summary.innerHTML = `<b>${live}</b> competitions live · <b>${soon}</b> matches in the next day or so · updated ${SP.esc(SP.ago(index.updated))}`;
-    sections.innerHTML = yourTeams() + blocks.join("") + digestHtml();
+    sections.innerHTML = yourTeams() + blocks.join("") + tightest() + digestHtml();
     const more = document.getElementById("more-matches");
     if (more) more.onclick = () => { allMatches = !allMatches; render(); };
   }

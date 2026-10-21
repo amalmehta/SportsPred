@@ -39,6 +39,9 @@ def parse_event(e, tour):
             codes = [((((x.get("athlete") or {}).get("flag") or {}).get("href") or "").rsplit("/", 1)[-1].split(".")[0] or None)
                      for x in comp]
             known = [i if i and not str(i).startswith("-") and n != "TBD" else None for i, n in zip(ids, names)]
+            # set scores, e.g. [[6, 3], [6, 7], [7, 5]] (games for each player per set)
+            lines = [x.get("linescores") or [] for x in comp]
+            sc = [[int(a.get("value") or 0), int(b.get("value") or 0)] for a, b in zip(*lines)] if all(lines) else None
             w = None
             if comp[0].get("winner"):
                 w = 0
@@ -49,7 +52,7 @@ def parse_event(e, tour):
                 "date": c.get("date") or e.get("date"), "status": _status((c.get("status") or {}).get("type") or {}),
                 "a": known[0], "an": names[0] if known[0] else "TBD",
                 "b": known[1], "bn": names[1] if known[1] else "TBD", "w": w,
-                "ac": codes[0] if known[0] else None, "bc": codes[1] if known[1] else None,
+                "ac": codes[0] if known[0] else None, "bc": codes[1] if known[1] else None, "sc": sc,
             })
     prev = [p.get("displayName") for p in e.get("previousWinners", [])
             if (p.get("type") or {}).get("slug") == SINGLES[tour]]
