@@ -42,6 +42,7 @@
       .map(([k, v]) => `${ROUND[k]} ${SP.prob(v)}`) : [];
     const extra = [
       s.title ? "title won" : "", s.down ? "relegated" : "",
+      e.range && e.status !== "finished" ? `likely ${e.range[0] === e.range[1] ? ordinal(e.range[0]) : ordinal(e.range[0]) + "–" + ordinal(e.range[1])}` : "",
       e.p_top != null && s.top == null ? `top-${e.top === 8 ? "8" : e.top === 3 ? "three" : "four"} finish ${SP.prob(e.p_top)}` : s.top ? `top ${e.top || 4} sure` : "",
       e.p_ko != null && s.ko == null && e.p_ko < 0.999 ? `knockouts ${SP.prob(e.p_ko)}` : "",
       e.p_adv != null && e.status !== "finished" ? `out of the group ${SP.prob(e.p_adv)}` : "",

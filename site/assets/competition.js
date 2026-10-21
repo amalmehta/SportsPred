@@ -104,6 +104,7 @@
     const rounds = rows.some(r => r.reach) && c.status !== "finished"
       ? [["r16", "Last 16", "opt"], ["qf", "Quarters", ""], ["sf", "Semis", ""], ["f", "Final", "opt"]] : [];
     const xp = rows.some(r => r.xpts != null && r.played);
+    const rng = rows.some(r => r.range) && c.status !== "finished";
     // a chance the arithmetic has already settled: "Sure" or "Out" instead of a percentage
     const settled = (r, k) => {
       const s = r.sure || {}, key = { p_win: "title", p_top: "top", p_drop: "down", p_ko: "ko" }[k];
@@ -121,16 +122,53 @@
     };
     const vsExp = r => { const d = r.pts - r.xpts; return `<span class="${Math.abs(d) >= 3 ? (d > 0 ? "ahead" : "behind") : ""}">${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(1)}</span>`; };
     return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th>${groups ? "<th>Group</th>" : ""}
-      <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th>${xp ? '<th class="num opt" title="Points won minus the points the pre-match chances said to expect. Plus means ahead of expectation (good finishing, goalkeeping or luck).">vs exp.</th>' : ""}<th class="num" title="Average final points across simulations">Proj. pts</th>
+      <th class="num opt">Played</th><th class="num">Pts</th><th class="num opt">GD</th>${xp ? '<th class="num opt" title="Points won minus the points the pre-match chances said to expect. Plus means ahead of expectation (good finishing, goalkeeping or luck).">vs exp.</th>' : ""}<th class="num" title="Average final points across simulations">Proj. pts</th>${rng ? '<th class="num opt" title="Where they finish in 80% of simulated seasons">Likely finish</th>' : ""}
       <th class="num opt" title="Elo rating">Rating</th>${extra.map(([, label, hint]) => `<th class="num${rounds.length ? " opt" : ""}" title="${hint}">${label}</th>`).join("")}
       ${rounds.map(([, label, cls]) => `<th class="num ${cls}" title="Chance to reach the ${label.toLowerCase()}">${label}</th>`).join("")}<th class="num">Win title</th></tr></thead><tbody>
       ${rows.map((r, i) => `<tr class="${SP.following().has(r.team) ? "mine" : ""}"><td class="muted">${i + 1}</td><td>${SP.starButton(r.team)} ${SP.flag(r.flag)}${SP.teamLink(r.team, c.sport)}${badge(r)}</td>${groups ? `<td class="muted">${SP.esc((r.group || "").replace("Group ", ""))}</td>` : ""}
         <td class="num opt">${r.played}</td><td class="num">${r.pts}</td><td class="num opt">${r.gd > 0 ? "+" : ""}${r.gd}</td>${xp ? `<td class="num opt">${r.played ? vsExp(r) : "–"}</td>` : ""}
-        <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td><td class="num opt">${r.rating}</td>
+        <td class="num">${r.proj_pts == null ? "–" : r.proj_pts.toFixed(0)}</td>${rng ? `<td class="num opt">${finish(r.range)}</td>` : ""}<td class="num opt">${r.rating}</td>
         ${extra.map(([k]) => `<td class="num${rounds.length ? " opt" : ""}">${cell(r, k)}</td>`).join("")}
         ${rounds.map(([k, , cls]) => `<td class="num ${cls}">${SP.prob((r.reach || {})[k] || 0)}</td>`).join("")}
         <td class="num">${cell(r, "p_win")}<span class="pbar"><i style="width:${r.p_win * 100}%"></i></span></td></tr>`).join("")}
     </tbody></table></div>`;
+  }
+
+  // "3rd–6th": where a team finishes in 80% of simulated seasons
+  const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+  function finish(r) { return !r ? "–" : r[0] === r[1] ? ord(r[0]) : `${ord(r[0])}–${ord(r[1])}`; }
+
+  // roughly how many points the title, the top places and safety will take
+  function linesHtml() {
+    const l = c.lines, pl = c.places || {};
+    if (!l) return "";
+    const tile = (label, v) => v ? `<div class="stat"><b>${v[1]} pts</b><span>${label} · usually ${v[0]}–${v[2]}</span></div>` : "";
+    return `<h2>Points needed</h2><p class="small muted" style="margin:-6px 0 0">What the team in each place ends up with across the simulated seasons: the middle value, and the range in 80% of them.</p>
+      <div class="stats">${tile("To win the title", l.title)}${tile(`To finish in the top ${pl.top}`, l.top)}${tile(`To stay up (${ord((c.table.length || 0) - (pl.drop || 0))} place)`, l.safe)}</div>`;
+  }
+
+  // the season's least likely results, and whose rating moved most this month
+  function seasonHtml() {
+    const sh = c.shocks || [], tr = c.trend;
+    if (!sh.length && !tr) return "";
+    const move = x => `<li>${SP.teamLink(x.team, c.sport)} <b>${x.change > 0 ? "+" : "−"}${Math.abs(x.change)}</b></li>`;
+    return `<details class="panel fold"><summary><h2>Season so far</h2><span class="muted small">Biggest upsets, and who's rising and falling</span></summary>
+      ${sh.length ? `<h3>Biggest upsets</h3><div class="matches">${sh.map(m => `<div class="match"><div class="when">${SP.esc(SP.date(m.date))}</div>
+        <div class="teams"><span>${SP.flag(m.hf)}${SP.esc(m.home)}</span> <b>${m.hg}–${m.ag}</b> <span>${SP.esc(m.away)}${SP.flag(m.af)}</span></div>
+        <div class="meta"><span class="badge upset">We gave it ${SP.prob(m.p)}</span></div></div>`).join("")}</div>` : ""}
+      ${tr ? `<h3>Rising and falling</h3><p class="small muted" style="margin-top:-4px">Rating change over the last ${tr.days} days, every competition included.</p>
+        <div class="two"><div><b class="small">Rising</b><ul class="trend">${tr.up.map(move).join("") || '<li class="muted">Nobody by 10+ points</li>'}</ul></div>
+        <div><b class="small">Falling</b><ul class="trend">${tr.down.map(move).join("") || '<li class="muted">Nobody by 10+ points</li>'}</ul></div></div>` : ""}
+    </details>`;
+  }
+
+  // tennis: matches with one player known and the other still to come
+  function waitingHtml() {
+    const list = c.waiting || [];
+    if (!list.length || c.status === "finished") return "";
+    return `<h3>Waiting on an opponent</h3><div class="matches">${list.map(w => `<div class="match"><div class="when">${SP.esc(w.date ? SP.when(w.date) : "")}<br>${SP.esc(w.round)}</div>
+      <div class="teams"><span>${SP.flag(w.pf)}${SP.esc(w.player)}</span><span class="muted small">v</span></div>
+      <div class="meta" style="display:block;color:var(--text-2)">${w.options.map(o => `<div>${SP.esc(o.name)}: <b>${SP.prob(o.p)}</b> to be the opponent${o.win != null ? ` · ${SP.esc(w.player)} would win ${SP.prob(o.win)}` : ""}</div>`).join("")}</div></div>`).join("")}</div>`;
   }
 
   // who's ahead of and behind what their results so far deserved
@@ -222,10 +260,11 @@
     const meta = past
       ? SP.verdictBadge(m, "soccer")
       : `<span>Likely score ${m.score[0]}–${m.score[1]}</span>${stateBadge(m)}`;
+    const spot = past && m.exact ? ` <span class="badge sure" title="The score we rated likeliest before the match">Exact score</span>` : "";
     return `<div class="match"><div class="when">${SP.esc(past ? SP.when(m.date) : SP.time(m.date))}</div>
       <div class="teams"><span>${SP.flag(m.hf)}${SP.esc(m.home)}</span>${score}<span>${SP.esc(m.away)}${SP.flag(m.af)}</span></div>
       <div class="split">${seg(m.p[0], "h", "Home win")}${seg(m.p[1], "d", "Draw")}${seg(m.p[2], "a", "Away win")}</div>
-      <div class="meta">${past ? "<span>Pre-match: home · draw · away</span>" : ""}${meta}</div>${past ? "" : soccerWhy(m)}</div>`;
+      <div class="meta">${past ? "<span>Pre-match: home · draw · away</span>" : ""}<span>${meta}${spot}</span></div>${past ? "" : soccerWhy(m)}</div>`;
   }
 
   function h2hList(list, line) {
@@ -422,16 +461,18 @@
         <p class="small chart-sum" id="chart-sum">${chartSummary()}</p>
         <div id="chart-table" ${asTable ? "" : "hidden"}>${chartTable()}</div>
         <div class="legend" id="legend"></div>
-        <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button></div>`
+        <div style="margin-top:10px"><button class="chip" id="as-table">${asTable ? "Show as chart" : "Show as table"}</button>${asTable ? "" : ' <button class="chip" id="save-chart" type="button" title="Download the chart as a PNG image">Save image</button>'}</div>`
         : `<div class="muted">The chart fills in as results come in${c.projected ? ", starting when the groups are drawn" : ""}.</div>`}</div>
       <div class="title-row"><h2>${tennis ? "Every player's chances" : "Every team's chances"}</h2>${c.table.length ? '<button class="chip" id="csv" type="button" title="Download this table as a CSV file">Download CSV</button>' : ""}</div>
       <div class="panel" style="padding:4px 8px">${oddsTable() || '<div class="muted" style="padding:12px">No entrants yet.</div>'}${moreButton()}${luckLine()}</div>
+      ${linesHtml()}
       ${swingsHtml()}
       ${whatifHtml()}
       ${runInHtml()}
       ${positionsHtml()}
+      ${seasonHtml()}
       <div class="two">
-        <div><div class="title-row"><h2>Coming up</h2>${c.upcoming.length ? '<button class="chip" id="ics" type="button" title="Download these matches, with our chances, for your calendar">Add to calendar</button>' : ""}</div>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div></div>
+        <div><div class="title-row"><h2>Coming up</h2>${c.upcoming.length ? '<button class="chip" id="ics" type="button" title="Download these matches, with our chances, for your calendar">Add to calendar</button>' : ""}</div>${!tennis && c.upcoming.length ? `<p class="small muted" style="margin:-6px 0 10px"><i class="sw" style="background:var(--bar-home)"></i> home win &nbsp;<i class="sw" style="background:var(--bar-draw)"></i> draw &nbsp;<i class="sw" style="background:var(--bar-away)"></i> away win</p>` : ""}<div class="matches">${c.upcoming.length ? byDay(c.upcoming) : '<div class="empty">No scheduled matches.</div>'}</div>${waitingHtml()}</div>
         <div><h2>Recent results vs. our call</h2>${recordLine()}<div class="matches">${c.recent.length ? c.recent.map(m => matchRow(m, true)).join("") : '<div class="empty">No results yet.</div>'}</div></div>
       </div>`;
     if (canChart && !asTable) drawChart();
@@ -441,6 +482,8 @@
     if (csv) csv.onclick = downloadCsv;
     const ics = document.getElementById("ics");
     if (ics) ics.onclick = calendar;
+    const save = document.getElementById("save-chart");
+    if (save) save.onclick = saveChart;
     const toggle = document.getElementById("as-table");
     if (toggle) toggle.onclick = () => { asTable = !asTable; const y = scrollY; render(); scrollTo(0, y); };
     const more = document.getElementById("more");
@@ -482,7 +525,7 @@
     const span = tennis ? "This tournament" : "This season";
     const hint = tennis ? "how often the player we rated likelier won" : "how often the result we rated likeliest happened (home win, draw or away win)";
     return `<p class="small muted" style="margin:-6px 0 10px" title="${hint}. Brier score: 0 is perfect, lower is better.">
-      ${span}: called <b>${r.called} of ${r.n}</b> (${pct}%) · Brier ${r.brier.toFixed(3)}</p>`;
+      ${span}: called <b>${r.called} of ${r.n}</b> (${pct}%)${r.exact != null ? ` · exact score ${r.exact}` : ""} · Brier ${r.brier.toFixed(3)}</p>`;
   }
 
   // the chart's numbers as a table: one row per day, replay value with the published value beside it
@@ -499,6 +542,35 @@
         return `<td class="num">${r}${pub}</td>`;
       }).join("")}</tr>`).join("")}
       </tbody></table></div><p class="small muted">Replay value, with the value this site published that day in brackets.</p>`;
+  }
+
+  // the chart as a PNG: the page's background, a title, the lines and a legend of the teams shown
+  function saveChart() {
+    if (!chart) return;
+    const src = chart.canvas, scale = 2, pad = 24 * scale, head = 56 * scale, legendRow = 22 * scale;
+    const shown = c.history.series.map((x, i) => [x, i]).filter(([x]) => !hidden.has(x.team));
+    const out = document.createElement("canvas");
+    out.width = src.width * scale / (src.width / src.clientWidth) + 2 * pad;
+    const w = out.width - 2 * pad, h = src.clientHeight * scale;
+    out.height = head + h + pad + Math.ceil(shown.length / 4) * legendRow + pad;
+    const g = out.getContext("2d");
+    g.fillStyle = css("--surface") || "#fff"; g.fillRect(0, 0, out.width, out.height);
+    g.fillStyle = css("--text") || "#111"; g.font = `700 ${18 * scale}px Inter, system-ui, sans-serif`;
+    g.fillText(`${c.name}: ${tennis ? "title odds over the tournament" : "title odds over the season"}`, pad, pad + 14 * scale);
+    g.fillStyle = css("--text-2") || "#555"; g.font = `${12 * scale}px Inter, system-ui, sans-serif`;
+    g.fillText(`SportsPred · ${SP.date(c.updated)}`, pad, pad + 34 * scale);
+    g.drawImage(src, pad, head, w, h);
+    const colors = Array.from({ length: 8 }, (_, i) => css(`--s${i + 1}`));
+    shown.forEach(([x, i], k) => {
+      const cx = pad + (k % 4) * (w / 4), cy = head + h + pad / 2 + Math.floor(k / 4) * legendRow;
+      g.fillStyle = colors[i]; g.fillRect(cx, cy, 12 * scale, 12 * scale);
+      g.fillStyle = css("--text") || "#111"; g.font = `${12 * scale}px Inter, system-ui, sans-serif`;
+      g.fillText(`${x.team} · ${SP.prob(x.p[x.p.length - 1])}`, cx + 18 * scale, cy + 11 * scale);
+    });
+    const a = document.createElement("a");
+    a.href = out.toDataURL("image/png");
+    a.download = `${c.name} odds ${(c.updated || "").slice(0, 10)}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   function legendOnly() {

@@ -314,6 +314,20 @@ def drop_swings(tracked, relegated, fixtures, teams, min_share=0.02, keep=5):
     return race_swings(tracked, relegated, open_, fixtures, teams, min_share, keep)
 
 
+def points_lines(pts, order, top=None, bottom=None):
+    """Roughly how many points each target will take: the points of the team finishing 1st, in the last
+    top place and in the last safe place, as [10th percentile, median, 90th percentile] across simulations."""
+    by_place = np.take_along_axis(pts, order, axis=1)  # by_place[s, k] = points of the team k-th in sim s
+    T = pts.shape[1]
+    spread = lambda k: [int(round(float(np.percentile(by_place[:, k], q)))) for q in (10, 50, 90)]
+    out = {"title": spread(0)}
+    if top and top < T:
+        out["top"] = spread(top - 1)
+    if bottom and bottom < T:
+        out["safe"] = spread(T - bottom - 1)
+    return out
+
+
 def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None, track=0, tiebreak="gd"):
     """Domestic league: champion = top of the table; also the chance of a top-`top` or bottom-`bottom` finish.
     With track=k, also says which of the next k games swing the title race most (see match_swings)."""
@@ -328,6 +342,7 @@ def simulate_league(teams, results, fixtures, mu, n, seed, top=None, bottom=None
     out.update(place_odds(order, teams, top, bottom))
     pos = np.argsort(order, axis=1)  # pos[s, i] = where team i finished in sim s (0 = top)
     out["positions"] = {t: np.bincount(pos[:, i], minlength=len(teams)) / float(n) for i, t in enumerate(teams)}
+    out["lines"] = points_lines(pts, order, top, bottom)
     if track:
         out["swings"] = match_swings(res[2], order[:, 0], fixtures, teams, p_win)
         if bottom:

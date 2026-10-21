@@ -367,3 +367,6 @@ table.keys kbd { font-size: 12px; padding: 1px 6px; color: var(--text); }
 .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--link); text-decoration: underline; cursor: pointer; }
 .card .second { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); margin-top: -4px; }
 .card .second span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.trend { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }
+ul.trend li { display: flex; justify-content: space-between; gap: 12px; max-width: 280px; font-variant-numeric: tabular-nums; }
+details.fold h3 { margin: 16px 0 8px; font-size: 15px; }

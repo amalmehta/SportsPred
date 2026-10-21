@@ -160,6 +160,18 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
                                  "h2h": [{"date": x["date"], "event": (event_names or {}).get(x.get("event"), ""),
                                           "round": x["round"], "winner": x["an"] if x["w"] == 0 else x["bn"]}
                                          for x in (h2h or {}).get(frozenset((m["a"], m["b"])), [])[:5]]})
+    # matches with one player known and the other still to come: who they'll likely face
+    waiting = []
+    for name, ms in rounds:
+        for m in sorted(ms, key=lambda m: m["date"] or ""):
+            opts = (reach.get("next") or {}).get(m["id"])
+            if not opts or m["status"] not in ("scheduled", "live"):
+                continue
+            known = m["a"] or m["b"]
+            likely = sorted(opts.items(), key=lambda kv: -kv[1])[:3]
+            waiting.append({"date": m["date"], "round": name, "player": players.get(known, known), "pf": flag.get(known),
+                            "options": [{"name": "a qualifier" if o == "Q" else players.get(o, o), "p": round(p, 3),
+                                         "win": round(p_match(known, o), 3) if o != "Q" else None} for o, p in likely]})
     calls = []  # every finished match in this event, judged against its pre-match prediction
     for m in finished:
         if m["id"] in elo.pre and m["w"] is not None:
@@ -205,7 +217,7 @@ def event_payload(ev, tour, elo, snaps, today_iso, projected_field=None, h2h=Non
                     "series": [{"team": players.get(p, p), "p": [round(s.get(p, 0.0), 4) for s in series]} for p in top]},
         "favourite": {"name": fav["player"], "p": fav["p_win"]} if fav else None,
         "second": {"name": rows[1]["player"], "p": rows[1]["p_win"]} if fav and len(rows) > 1 and rows[1]["p_win"] > 0 else None,
-        "likely_final": likely_final,
+        "likely_final": likely_final, "waiting": waiting[:12],
         "next_match": upcoming[0]["date"] if upcoming else ev["start"],
     }
 

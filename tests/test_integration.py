@@ -432,5 +432,61 @@ class RoundEightTests(unittest.TestCase):
             self.assertTrue(sw["date"])
 
 
+class RoundNineTests(unittest.TestCase):
+    def test_points_lines_and_finishing_range(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        c = t.payload()
+        for k in ("title", "top", "safe"):
+            lo, mid, hi = c["lines"][k]
+            self.assertLessEqual(lo, mid)
+            self.assertLessEqual(mid, hi)
+        self.assertGreaterEqual(c["lines"]["title"][1], c["lines"]["top"][1])
+        self.assertGreaterEqual(c["lines"]["top"][1], c["lines"]["safe"][1])
+        for r in c["table"]:
+            self.assertTrue(1 <= r["range"][0] <= r["range"][1] <= 6)
+
+    def test_season_upsets_exact_scores_and_trend(self):
+        t = SoccerPipelineTests("test_competition_file_is_complete_and_consistent")
+        t.setUp()
+        c = t.payload()
+        played = [m for m in t.matches if m["status"] == "final"]
+        self.assertTrue(0 <= c["record"]["exact"] <= len(played))
+        self.assertTrue(all(x["p"] < 0.25 for x in c["shocks"]))
+        self.assertEqual([x["p"] for x in c["shocks"]], sorted(x["p"] for x in c["shocks"]))
+        for m in c["recent"]:
+            self.assertEqual(m["exact"], (m["hg"], m["ag"]) == tuple(m["score"]))
+        elo = Elo(hfa=60.0)
+        elo.ratings = {"A": 1600.0, "B": 1450.0, "C": 1500.0}
+        history = {"A": [("2026-09-01", 1550.0), ("2026-10-01", 1570.0)], "B": [("2026-10-05", 1500.0)], "C": [("2026-10-10", 1495.0)]}
+        tr = soccer_build.trend(["A", "B", "C"], {}, elo, history, TODAY)
+        self.assertEqual(tr["up"], [{"team": "A", "change": 30}])   # from its first game in the last 30 days
+        self.assertEqual(tr["down"], [{"team": "B", "change": -50}])  # C moved under 10: left out
+
+    def test_european_games_get_the_extra_home_advantage(self):
+        self.assertEqual(soccer_build.extra_hfa("uefa.champions"), soccer_build.EURO_HFA)
+        self.assertEqual(soccer_build.extra_hfa("eng.1"), 0.0)
+        elo = Elo(hfa=60.0)
+        base = {"id": 1, "date": "2026-10-01", "home": "H", "away": "A", "hg": 1, "ag": 1, "neutral": False}
+        elo.update(dict(base))
+        plain = elo.ratings["H"]
+        elo2 = Elo(hfa=60.0)
+        elo2.update(dict(base, hfa_add=40.0))
+        self.assertLess(elo2.ratings["H"], plain)  # a draw at home is worse when home advantage is bigger
+
+    def test_likely_next_opponent(self):
+        from pipeline.tennis_model import simulate_draw
+        def m(i, rnd, a, b, w):
+            return {"id": str(i), "round": rnd, "date": "2026-10-14T10:00Z", "status": "final" if w is not None else "scheduled",
+                    "a": a, "b": b, "w": w}
+        rounds = [("Quarterfinal", [m(1, "Quarterfinal", "P1", "P2", 0), m(2, "Quarterfinal", "P3", "P4", None)]),
+                  ("Semifinal", [m(3, "Semifinal", "P1", None, None)])]
+        reach = {}
+        simulate_draw(rounds, {"P1": 1600, "P2": 1500, "P3": 1700, "P4": 1500}, False, 4000, 1, reach=reach)
+        opp = reach["next"]["3"]
+        self.assertAlmostEqual(sum(opp.values()), 1.0, places=6)
+        self.assertAlmostEqual(opp["P3"], 1 / (1 + 10 ** (-200 / 400.0)), delta=0.03)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,7 @@
   <h2 id="ratings">1. Rate every team and player</h2>
   <p>Each soccer club, national team and tennis player has an <b>Elo rating</b>: one number that goes up when they win and down when they lose. Beating a stronger opponent earns more than beating a weaker one, so after a few seasons the numbers settle where results put them.</p>
   <ul>
-    <li><b>Club soccer</b> uses every match since 2021 in the big five leagues, the Champions, Europa and Conference Leagues, and five more leagues (Portugal, Netherlands, Scotland, Belgium, Turkey), so clubs from different countries are measured on one scale. Wins by bigger margins count for more, and home teams get a head start that the model fits from the data. When a club beats a club from another league in Europe, its <b>whole league</b> moves up a little (and the other league down): domestic games can't show which league is stronger, but European ones can. That made European match predictions noticeably better.</li>
+    <li><b>Club soccer</b> uses every match since 2021 in the big five leagues, the Champions, Europa and Conference Leagues, and five more leagues (Portugal, Netherlands, Scotland, Belgium, Turkey), so clubs from different countries are measured on one scale. Wins by bigger margins count for more, and home teams get a head start that the model fits from the data (40 points more in European games, where it was worth more in testing). When a club beats a club from another league in Europe, its <b>whole league</b> moves up a little (and the other league down): domestic games can't show which league is stronger, but European ones can. That made European match predictions noticeably better.</li>
     <li><b>International soccer</b> uses every international since 1990; World Cup and continental tournament matches count more than friendlies.</li>
     <li><b>Tennis</b> uses every ATP and WTA singles match since 2024. New players' ratings move fast and established players' slowly (the approach FiveThirtyEight popularised). Grand Slam matches count a little more. Each player also has a <b>rating per surface</b> (hard, clay, grass) built only from matches on that surface. A prediction blends the two; the mix is fitted to the last year of results <span id="surface-mix"></span>.</li>
   </ul>
@@ -108,6 +108,8 @@
     <li>Fixtures, results and tennis draws: ESPN's public scoreboard feeds.</li>
     <li>International results since 1872: <a href="https://github.com/martj42/international_results">martj42/international_results</a>.</li>
   </ul>
+
+  <p><b>Use the data:</b> every number here comes from JSON files anyone can read, for example <a href="data/index.json">data/index.json</a> (every competition) and one file per competition and per team. The <a href="https://github.com/amalmehta/SportsPred/blob/main/docs/INSTRUCTIONS.md#use-the-data">instructions</a> list them all. There's also a <a href="feed.xml">feed</a> of upsets and big moves.</p>
 
   <h2 id="limits">7. What it doesn't know</h2>
   <ul>

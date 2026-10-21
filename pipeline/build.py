@@ -112,7 +112,7 @@ def team_pages(summaries, histories, out_dir=None):
         for r in c.get("table", []):
             p = people.setdefault((c["sport"], r[who]), {"name": r[who], "sport": c["sport"], "part": part, "flag": r.get("flag"),
                                                          "comps": [], "upcoming": [], "recent": []})
-            extra = {k: r[k] for k in ("sure", "xpts", "pts", "p_adv", "p_ko", "reach") if r.get(k) is not None}
+            extra = {k: r[k] for k in ("sure", "xpts", "pts", "p_adv", "p_ko", "reach", "range") if r.get(k) is not None}
             if r[who] in hard:
                 extra["run_in"] = [hard[r[who]], len(hard)]
             p["comps"].append(dict(where, p=r.get(key, 0.0), what="qualify" if key == "p_qualify" else "win",

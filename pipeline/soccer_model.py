@@ -93,7 +93,7 @@ class Elo:
         rh, ra = self.rating(m["home"], m), self.rating(m["away"], m)
         if m.get("id") is not None:
             self.pre[m["id"]] = (rh, ra)
-        g = rh + (0 if m.get("neutral") else self.hfa) - ra
+        g = rh + (0 if m.get("neutral") else self.hfa + m.get("hfa_add", 0.0)) - ra
         expected = 1.0 / (1.0 + 10 ** (-g / 400.0))
         actual = 1.0 if m["hg"] > m["ag"] else (0.5 if m["hg"] == m["ag"] else 0.0)
         # new teams settle faster

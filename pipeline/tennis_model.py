@@ -222,7 +222,8 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
     """Monte Carlo over the remaining draw. Returns {player id: P(title)}.
 
     Pass a dict as `reach` to also get {"qf"|"sf"|"f": {player id: P(reach that round)}}, plus
-    "finals": {(player, player): P(that pair contests the final)}.
+    "finals": {(player, player): P(that pair contests the final)} and "next": {match id: {opponent: P}}
+    for listed matches with one player known and the other still to be decided ("Q" = a qualifier).
 
     ESPN doesn't publish bracket positions, so known players are linked to the match they came
     from; open slots (TBD) take winners of unlinked matches from the round before, drawn at random.
@@ -261,6 +262,9 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
     wins = defaultdict(int)
     reached = {k: defaultdict(int) for k in ("qf", "sf", "f")}
     finals = defaultdict(int)
+    nxt = defaultdict(lambda: defaultdict(int))
+    half = {m["id"] for _, ms in rounds for m in ms
+            if (m["a"] is None) != (m["b"] is None) and m["status"] not in ("final", "retired", "walkover")}
     keys = [reach_key(name) for name, _ in rounds]
     last = len(rounds) - 1
     for s in range(n):
@@ -282,6 +286,9 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
                             reached[keys[r]][p] += 1
                 if r == last and len(ms) == 1 and not isinstance(a, tuple) and not isinstance(b, tuple):
                     finals[tuple(sorted((a, b)))] += 1
+                if m["id"] in half and reach is not None:
+                    opp = b if m["a"] is not None else a
+                    nxt[m["id"]]["Q" if isinstance(opp, tuple) else opp] += 1
                 if m["status"] in ("final", "retired", "walkover") and m["w"] is not None:
                     winner[m["id"]] = a if m["w"] == 0 else b
                 else:
@@ -293,6 +300,7 @@ def simulate_draw(rounds, ratings, best_of_5, n, seed, default_rating=None, reac
     if reach is not None:
         reach.update({k: {p: c / float(n) for p, c in v.items()} for k, v in reached.items()})
         reach["finals"] = {pair: c / float(n) for pair, c in finals.items()}
+        reach["next"] = {mid: {p: c / float(n) for p, c in v.items()} for mid, v in nxt.items()}
     return {p: c / float(n) for p, c in wins.items()}
 
 

@@ -5,13 +5,19 @@ import WebKit
 let siteURL = URL(string: (Bundle.main.object(forInfoDictionaryKey: "SPSiteURL") as? String)
     ?? "https://amalmehta.github.io/SportsPred/")!
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSMenuDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var lastLoad = Date.distantPast
     var titleWatch: NSKeyValueObservation?
     var cacheTried = Set<URL>()  // pages we've already tried to show from cache while offline
     let refreshAfter: TimeInterval = 15 * 60  // predictions update about hourly; refresh when coming back
+    var teamsMenu: NSMenu!
+    // the teams and players followed on the site (★), as [name, team page id]; the page tells us when they change
+    var yourTeams: [[String]] {
+        get { UserDefaults.standard.array(forKey: "YourTeams") as? [[String]] ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "YourTeams") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
@@ -19,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()  // keeps the site's settings between launches
         config.applicationNameForUserAgent = "SportsPredMac/1.0"
+        config.userContentController.add(self, name: "sportspred")
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -167,6 +174,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc func openInBrowser(_ sender: Any?) { NSWorkspace.shared.open(shareableURL ?? siteURL) }
     @objc func openSource(_ sender: Any?) { NSWorkspace.shared.open(URL(string: "https://github.com/amalmehta/SportsPred")!) }
 
+    // MARK: your teams
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let list = message.body as? [[String: Any]] else { return }
+        yourTeams = list.compactMap { entry in
+            guard let name = entry["name"] as? String else { return nil }
+            return [name, entry["id"] as? String ?? ""]
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for item in teamItems() { menu.addItem(item) }
+    }
+
+    func teamItems() -> [NSMenuItem] {
+        let teams = yourTeams
+        if teams.isEmpty {
+            let none = NSMenuItem(title: "Star a team or player on the site to see it here", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            return [none]
+        }
+        return teams.enumerated().map { i, t in
+            let item = NSMenuItem(title: t[0], action: #selector(openTeam(_:)), keyEquivalent: i < 9 ? String(i + 1) : "")
+            item.keyEquivalentModifierMask = [.command, .option]
+            item.target = self
+            item.representedObject = t
+            return item
+        }
+    }
+
+    @objc func openTeam(_ sender: NSMenuItem) {
+        guard let t = sender.representedObject as? [String], t.count == 2 else { return }
+        if t[1].isEmpty {  // no team page yet: search for the name instead
+            go(siteURL.appendingPathComponent("index.html").withQuery("find=1"))
+        } else {
+            go(siteURL.appendingPathComponent("team.html").withQuery("id=" + (t[1].addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? t[1])))
+        }
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        for item in teamItems() { item.keyEquivalent = ""; menu.addItem(item) }
+        return menu
+    }
+
     // MARK: menus
 
     func buildMenu() -> NSMenu {
@@ -234,6 +287,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             item("Tennis", #selector(goTennis(_:)), "2", target: me),
             item("How It Works", #selector(goHow(_:)), "3", target: me),
         ])
+        teamsMenu = submenu("Your Teams", [])
+        teamsMenu.delegate = me
         let windowMenu = submenu("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
             item("Zoom", #selector(NSWindow.performZoom(_:))),

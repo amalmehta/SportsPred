@@ -67,6 +67,15 @@ def make_club_elo(hfa):
 # (2 seasons before), with domestic predictions slightly better too.
 LEAGUE_SHIFT = 16.0
 
+# Extra home advantage in European club games, on top of the fitted domestic one (Elo points). Chosen on
+# 2024-25 and checked on 2025-26 (Oct 2026): European log loss 0.9252 -> 0.9242, all predicted matches
+# 0.9798 -> 0.9791. Travel and unfamiliar opponents seem to count for more than in a league.
+EURO_HFA = 40.0
+
+
+def extra_hfa(slug):
+    return EURO_HFA if (slug or "").startswith("uefa.") else 0.0
+
 
 def run_club_elo(finished, hfa, snapshot_days=(), collect_from="2022-07-01", league_shift=LEAGUE_SHIFT):
     elo, league_teams = make_club_elo(hfa)
@@ -80,7 +89,7 @@ def run_club_elo(finished, hfa, snapshot_days=(), collect_from="2022-07-01", lea
 
     def on_match(m, rh, ra):
         league_teams.setdefault(m["slug"], set()).update((m["home"], m["away"]))
-        gap = rh + (0 if m["neutral"] else hfa) - ra
+        gap = rh + (0 if m["neutral"] else hfa + extra_hfa(m["slug"])) - ra
         if m["date"] >= collect_from:
             samples.append((gap, m["hg"], m["ag"]))
         if m["slug"].endswith(".1"):  # a domestic league game: remember where each club plays
@@ -99,7 +108,7 @@ def run_club_elo(finished, hfa, snapshot_days=(), collect_from="2022-07-01", lea
                 shift_league(lh, league_shift * (actual - expected))
                 shift_league(la, -league_shift * (actual - expected))
 
-    rows = [dict(m, home=m["home_key"], away=m["away_key"]) for m in finished]
+    rows = [dict(m, home=m["home_key"], away=m["away_key"], hfa_add=extra_hfa(m["slug"])) for m in finished]
     snaps = elo.run(rows, snapshot_days, on_match)
     return elo, samples, snaps
 
@@ -328,8 +337,33 @@ def named_swings(swings, todo, names):
             for sw in swings]
 
 
-def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_iso, groups=None, group_of=None, h2h=None):
-    hfa = elo.hfa
+def trend(teams, names, elo, history, today_iso, days=30, keep=3, min_change=10):
+    """Rising and falling: the biggest rating changes over the last month among these teams.
+    history: {team: [(date, rating before that match), ...]} in date order (every competition)."""
+    since = (date.fromisoformat(today_iso[:10]) - timedelta(days=days)).isoformat()
+    moves = []
+    for t in teams:
+        first = next((r for d, r in (history or {}).get(t, []) if d >= since), None)
+        if first is not None and t in elo.ratings:
+            moves.append((round(elo.ratings[t] - first), names.get(t, t)))
+    up = [{"team": n, "change": c} for c, n in sorted(moves, reverse=True) if c >= min_change][:keep]
+    down = [{"team": n, "change": c} for c, n in sorted(moves) if c <= -min_change][:keep]
+    return {"days": days, "up": up, "down": down} if up or down else None
+
+
+def rating_index(finished, elo):
+    """{team key: [(date, rating before the match), ...]} in date order, for trend()."""
+    out = {}
+    for m in finished:
+        if m.get("id") in elo.pre:
+            for key, r in zip((m["home_key"], m["away_key"]), elo.pre[m["id"]]):
+                out.setdefault(key, []).append((m["date"], r))
+    return out
+
+
+def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_iso, groups=None, group_of=None, h2h=None,
+                 history=None):
+    hfa = elo.hfa + extra_hfa(cfg["slug"])  # European games carry a bigger home advantage
     seed = seed_for(cfg["slug"], today_iso[:10])
     now = simulate_comp(cfg, season_matches, elo.ratings, gm, hfa, config.SIMS_TODAY, seed, groups,
                         track=15 if cfg["format"] == "league" else 0)
@@ -380,6 +414,9 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         for k in ("p_top", "p_drop", "p_ko", "p_adv"):  # top-4 / relegation, UEFA top-8 / knockouts, out of the group
             if k in now:
                 rows[-1][k] = round(now[k].get(t, 0.0), 4)
+        if t in (now.get("positions") or {}):  # likely finishing range: 10th to 90th percentile (1 = top)
+            cum = np.cumsum(now["positions"][t])
+            rows[-1]["range"] = [min(int(np.searchsorted(cum, q)) + 1, len(cum)) for q in (0.1, 0.9)]
         if now.get("reach"):  # how far: last 16, quarter-finals, semi-finals, final (or out of the groups)
             rows[-1]["reach"] = {k: round(v.get(t, 0.0), 4) for k, v in now["reach"].items()}
 
@@ -430,23 +467,30 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         if len(upcoming) >= 30:
             break
 
-    calls = []  # every finished match this season, judged against its pre-match prediction
+    calls, shocks, exact = [], [], 0  # every finished match this season, judged against its pre-match prediction
+    pre = {}  # match id -> (home, draw, away chances, likeliest score)
     for m in fin:
         if m["id"] in elo.pre:
             rh, ra = elo.pre[m["id"]]
-            p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
-            o = outcome(m)
+            ph, pd, pa, score, _ = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)
+            p, o = (ph, pd, pa), outcome(m)
+            pre[m["id"]] = (p, score)
             calls.append((max(range(3), key=lambda i: p[i]) == o, sum((p[i] - (i == o)) ** 2 for i in range(3))))
+            exact += score == (m["hg"], m["ag"])
+            shocks.append((p[o], m))
+    # the season's biggest upsets: results we gave the least chance
+    shocks = [{"date": m["date"], "home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
+               "hf": flag(m["home_key"]), "af": flag(m["away_key"]), "p": round(q, 3)}
+              for q, m in sorted(shocks, key=lambda x: x[0])[:5] if q < 0.25]
 
     recent = []
     for m in sorted(fin, key=lambda m: m["date"], reverse=True)[:12]:
-        if m["id"] not in elo.pre:
+        if m["id"] not in pre:
             continue
-        rh, ra = elo.pre[m["id"]]
-        p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
+        p, score = pre[m["id"]]
         recent.append({"date": m["date"], "home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
                        "hf": flag(m["home_key"]), "af": flag(m["away_key"]),
-                       "p": [round(x, 3) for x in p],
+                       "p": [round(x, 3) for x in p], "score": list(score), "exact": score == (m["hg"], m["ag"]),
                        "called": max(range(3), key=lambda i: p[i]) == outcome(m)})
 
     if qualifying:  # the races that moved most, not the certainties
@@ -471,12 +515,14 @@ def comp_payload(cfg, sport_group, season_matches, elo, gm, snaps, names, today_
         "second": ({"name": rows[1]["team"], "p": rows[1]["p_win"]}
                    if not qualifying and len(rows) > 1 and rows[1]["p_win"] > 0 else None),
         "next_match": upcoming[0]["date"] if upcoming else None,
-        "record": track_record(calls),
+        "record": dict(track_record(calls), exact=exact) if calls else None,
+        "shocks": shocks, "trend": trend(teams, names, elo, history, today_iso),
         "hfa": hfa, "rho": gm.rho,
         "swings": named_swings(now.get("swings", []), todo, names),
         "drop_swings": named_swings(now.get("drop_swings", []), todo, names),
         "whatif": whatif_data(season_matches, mu, names, cfg) if cfg["format"] == "league" else None,
         "positions": position_grid(now, names),
+        "lines": now.get("lines") if todo else None,
         "run_in": runin,
         "places": ({"top": cfg.get("top"), "drop": cfg.get("drop")} if cfg["format"] == "league" else
                    {"top": 8, "ko": 24} if cfg["format"] == "league_phase_ko" else None),
@@ -513,13 +559,14 @@ def build_clubs(today_iso):
     gm.rho = fit_low_score(gm, samples)  # more 0-0s and 1-1s than independent goals give
 
     h2h = h2h_index(finished)
+    history = rating_index(finished, elo)
     comps, rows, tagged = [], [], []
     cut = (t - timedelta(days=365)).isoformat()
     predicted = {c["slug"] for c in config.SOCCER_COMPETITIONS}
     for m in finished:
         if m["slug"] in predicted and m["date"] >= cut and m["id"] in elo.pre:
             rh, ra = elo.pre[m["id"]]
-            p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa) - ra)[:3]
+            p = gm.outcome_probs(rh + (0 if m["neutral"] else hfa + extra_hfa(m["slug"])) - ra)[:3]
             rows.append((p[0], p[1], p[2], outcome(m)))
             tagged.append((m["slug"],) + rows[-1])
     for cfg in config.SOCCER_COMPETITIONS:
@@ -530,11 +577,13 @@ def build_clubs(today_iso):
                 comps.append(old)
                 continue
         print("  simulating %s" % cfg["name"])
-        payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso, h2h=h2h)
+        payload = comp_payload(cfg, cfg["group"], seasons[cfg["slug"]], elo, gm, snaps, names, today_iso, h2h=h2h,
+                               history=history)
         comps.append(payload)
     print("  grading past title odds")
     graded = grade_past_seasons(past, snaps, gm, hfa, names)
-    model = {"hfa": hfa, "goals_base": round(float(np.exp(gm.base)), 3), "slope": round(gm.slope, 3), "rho": gm.rho,
+    model = {"hfa": hfa, "hfa_europe": hfa + EURO_HFA, "goals_base": round(float(np.exp(gm.base)), 3),
+             "slope": round(gm.slope, 3), "rho": gm.rho,
              "backtest": score_predictions(rows), "matches_rated": len(finished),
              "by_competition": by_competition(tagged, {c["slug"]: c["name"] for c in config.SOCCER_COMPETITIONS}),
              "calibration": calibration([(r[i], int(r[3] == i)) for r in rows for i in range(3)]),
@@ -583,7 +632,8 @@ def grade_past_seasons(past, snaps, gm, hfa, names, n=2000):
             sim_ms = [m for m in ms if "league" in m["stage"]]  # pre-season: only the league phase is fixed
         if not winner:
             continue
-        odds = simulate_comp(cfg, as_of(sim_ms, d), snaps[d], gm, hfa, n, seed_for("bt", cfg["slug"], label))["p_win"]
+        odds = simulate_comp(cfg, as_of(sim_ms, d), snaps[d], gm, hfa + extra_hfa(cfg["slug"]), n,
+                             seed_for("bt", cfg["slug"], label))["p_win"]
         rows.append(tb.grade(cfg["name"], label, odds, winner, names))
     return rows
 
@@ -640,6 +690,7 @@ def build_international(today_iso):
     gm = fit_goals_model(samples)
     gm.rho = fit_low_score(gm, samples)
     intl_h2h = h2h_index([dict(r, home_key=r["home"], away_key=r["away"]) for r in rows])
+    intl_history = rating_index([dict(r, home_key=r["home"], away_key=r["away"]) for r in rows], elo)
 
     comps = []
     for cfg, sm in active:
@@ -673,7 +724,7 @@ def build_international(today_iso):
             cfg = dict(cfg, _slots=next(v for k, v in sorted(cfg["stages"].items(), key=lambda kv: -len(kv[0]))
                                         if k in stage))
         comps.append(comp_payload(cfg, cfg["group"], sm_kept, elo, gm, snaps, names, today_iso, groups, group_of,
-                                  h2h=intl_h2h))
+                                  h2h=intl_h2h, history=intl_history))
 
     cut = (t - timedelta(days=365)).isoformat()
     bt = []

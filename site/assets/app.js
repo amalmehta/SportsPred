@@ -230,8 +230,19 @@ const SP = (() => {
     f.has(name) ? f.delete(name) : f.add(name);
     try { localStorage.setItem(FOLLOW, JSON.stringify([...f])); } catch (e) { /* private mode */ }
     listeners.forEach(fn => fn(settings));
+    tellMacApp();
     return f.has(name);
   }
+  // the Mac app lists followed teams in its Your Teams menu: send it the names and their team pages
+  async function tellMacApp() {
+    const app = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.sportspred;
+    if (!app) return;
+    let files = {};
+    try { files = await json("data/teams.json"); } catch (e) { /* offline: names only */ }
+    const ids = Object.entries(files);
+    app.postMessage([...following()].map(name => ({ name, id: (ids.find(([k]) => k.startsWith(name + "|")) || [])[1] || "" })));
+  }
+  if (/SportsPredMac/.test(navigator.userAgent)) tellMacApp();
   function starButton(name) {
     const on = following().has(name);
     return `<button class="star${on ? " on" : ""}" type="button" data-follow="${esc(name)}" aria-pressed="${on}"
